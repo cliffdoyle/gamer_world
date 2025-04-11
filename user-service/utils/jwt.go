@@ -19,7 +19,8 @@ func GenerateJWT(username string) (string, error) {
 
 
 func ValidateToken(tokenString string)(jwt.MapClaims,error){
-	token,err:=jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {			
+	token,err:=jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {	
+		// Check if the token's signing method is HMAC		
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
@@ -28,6 +29,8 @@ func ValidateToken(tokenString string)(jwt.MapClaims,error){
 	if err != nil {
 		return nil, err
 	}
+
+	// Check if the token is valid and has the expected claims
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		return claims, nil
 	}
