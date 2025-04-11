@@ -20,9 +20,9 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "User service is Up!"})
 	})
-	
-	r.POST("/register",handlers.Register)
-	r.POST("/login",handlers.Login)
 
-	r.Run(":"+os.Getenv("PORT"))
+	r.POST("/register", handlers.Register)
+	r.POST("/login", handlers.Login)
+
+	r.Run(":" + os.Getenv("PORT"))
 }

@@ -17,10 +17,9 @@ func GenerateJWT(username string) (string, error) {
 	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }
 
-
-func ValidateToken(tokenString string)(jwt.MapClaims,error){
-	token,err:=jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {	
-		// Check if the token's signing method is HMAC		
+func ValidateToken(tokenString string) (jwt.MapClaims, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Check if the token's signing method is HMAC
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}

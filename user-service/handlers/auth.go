@@ -31,22 +31,22 @@ func Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "User registered!"})
 }
 
-func Login(c *gin.Context){
+func Login(c *gin.Context) {
 	input := models.User{}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
-	storedUser:=models.User{}
-	err:=database.DB.QueryRow("SELECT id, username, password FROM users WHERE username=$1",input.Username).Scan(&storedUser.ID,&storedUser.Username,&storedUser.Password)
-	if err!=nil{
-		c.JSON(http.StatusUnauthorized,gin.H{"error":"Invalid credentials"})
+	storedUser := models.User{}
+	err := database.DB.QueryRow("SELECT id, username, password FROM users WHERE username=$1", input.Username).Scan(&storedUser.ID, &storedUser.Username, &storedUser.Password)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
-	err=bcrypt.CompareHashAndPassword([]byte(storedUser.Password),[]byte(input.Password))
-	if err!=nil{
-		c.JSON(http.StatusUnauthorized,gin.H{"error":"Invalid credentials"})
+	err = bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(input.Password))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 	token, err := utils.GenerateJWT(storedUser.Username)
@@ -54,10 +54,9 @@ func Login(c *gin.Context){
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token,"user":gin.H{
-		"id":storedUser.ID,
-		"username":storedUser.Username,
-	},})	
-
+	c.JSON(http.StatusOK, gin.H{"token": token, "user": gin.H{
+		"id":       storedUser.ID,
+		"username": storedUser.Username,
+	}})
 
 }
