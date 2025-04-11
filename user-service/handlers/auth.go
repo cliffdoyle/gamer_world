@@ -5,6 +5,7 @@ import (
 
 	"github.com/cliffdoyle/gamer_world/user-service/database"
 	"github.com/cliffdoyle/gamer_world/user-service/models"
+	"github.com/cliffdoyle/gamer_world/user-service/utils"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -28,4 +29,32 @@ func Register(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "User registered!"})
+}
+
+func Login(c *gin.Context){
+	input := models.User{}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	storedUser:=models.User{}
+	err:=database.DB.QueryRow("SELECT id, username, password FROM users WHERE username=$1",input.Username).Scan(&storedUser.ID,&storedUser.Username,&storedUser.Password)
+	if err!=nil{
+		c.JSON(http.StatusUnauthorized,gin.H{"error":"Invalid credentials"})
+		return
+	}
+	err=bcrypt.CompareHashAndPassword([]byte(storedUser.Password),[]byte(input.Password))
+	if err!=nil{
+		c.JSON(http.StatusUnauthorized,gin.H{"error":"Invalid credentials"})
+		return
+	}
+	token, err := utils.GenerateJWT(storedUser.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token": token})	
+
+
 }
