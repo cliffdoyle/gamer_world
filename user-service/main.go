@@ -2,8 +2,10 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/cliffdoyle/gamer_world/user-service/database"
+	"github.com/cliffdoyle/gamer_world/user-service/handlers"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
@@ -18,5 +20,9 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "User service is Up!"})
 	})
-	r.Run(":8081")
+	
+	r.POST("/register",handlers.Register)
+	r.POST("/login",handlers.Login)
+
+	r.Run(":"+os.Getenv("PORT"))
 }
