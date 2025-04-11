@@ -36,8 +36,17 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		//Set the claims in the context
-		c.Set("claims", claims)
+		//Extract the username from the claims
+		username, ok := claims["username"].(string)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid token claims",
+			})
+			c.Abort()
+			return
+		}
+		//Set the username in the context
+		c.Set("username", username)
 		//Continue to the next middleware or handler
 		c.Next()
 	}
