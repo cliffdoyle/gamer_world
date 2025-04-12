@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  user-service:
+    container_name: user_service
+    build:
+      context: ./user-service
+    ports:
+      - "8081:8081"  # This should match the PORT in your .env file
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./user-service/.env
+    entrypoint: ["./wait-for-postgres.sh", "postgres", "--", "./user-service"]
+    restart: unless-stopped
+    networks:
+      - backend
+
+  postgres:
+    container_name: postgres_db
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: cliffdoyle
+      POSTGRES_PASSWORD: kombewa
+      POSTGRES_DB: gaming_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cliffdoyle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
