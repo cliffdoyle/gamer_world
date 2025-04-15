@@ -12,7 +12,7 @@ services:
         condition: service_healthy
     env_file:
       - ./user-service/.env
-    entrypoint: ["./wait-for-postgres.sh", "postgres", "--", "./user-service"]
+    entrypoint: ["/wait-for-postgres.sh", "postgres", "--", "./user-service"]
     restart: unless-stopped
     networks:
       - backend
@@ -29,7 +29,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cliffdoyle"]
+      test: ["CMD-SHELL", "pg_isready -U cliffdoyle -d gaming_platform"]
       interval: 10s
       timeout: 5s
       retries: 5
