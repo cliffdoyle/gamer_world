@@ -28,7 +28,7 @@ type ParticipantRequest struct {
 type ParticipantResponse struct {
 	ID          uuid.UUID `json:"id"`
 	UserID      uuid.UUID `json:"user_id"`
-	Username    string    `json:"username"` // This would be populated from user service
+	Username    string    `json:"username"` 
 	TeamName    string    `json:"team_name"`
 	IsCheckedIn bool      `json:"is_checked_in"`
 	Seed        int       `json:"seed"`
