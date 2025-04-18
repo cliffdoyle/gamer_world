@@ -17,3 +17,19 @@ type Participant struct {
 	IsCheckedIn  bool       `json:"is_checked_in"`
 	CreatedAt    time.Time  `json:"created_at"`
 }
+
+// ParticipantRequest represents the data needed to register for a tournament
+type ParticipantRequest struct {
+	UserID   uuid.UUID `json:"user_id" binding:"required"`
+	TeamName string    `json:"team_name"`
+}
+
+// ParticipantResponse represents participant data returned to clients
+type ParticipantResponse struct {
+	ID          uuid.UUID `json:"id"`
+	UserID      uuid.UUID `json:"user_id"`
+	Username    string    `json:"username"` // This would be populated from user service
+	TeamName    string    `json:"team_name"`
+	IsCheckedIn bool      `json:"is_checked_in"`
+	Seed        int       `json:"seed"`
+}
