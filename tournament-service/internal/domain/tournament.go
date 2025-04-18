@@ -48,3 +48,18 @@ type Tournament struct {
 	PrizePool            map[string]interface{} `json:"prize_pool"`
 	CustomFields         map[string]interface{} `json:"custom_fields"`
 }
+
+
+// CreateTournamentRequest represents the data needed to create a tournament
+type CreateTournamentRequest struct {
+	Name                string           `json:"name" binding:"required"`
+	Description         string           `json:"description"`
+	Game                string           `json:"game" binding:"required"`
+	Format              TournamentFormat `json:"format"`
+	MaxParticipants     int              `json:"max_participants"`
+	RegistrationDeadline *time.Time      `json:"registration_deadline"`
+	StartTime           *time.Time       `json:"start_time"`
+	Rules               string           `json:"rules"`
+	PrizePool           map[string]interface{} `json:"prize_pool"`
+	CustomFields        map[string]interface{} `json:"custom_fields"`
+}
