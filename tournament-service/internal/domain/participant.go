@@ -6,30 +6,42 @@ import (
 	"github.com/google/uuid"
 )
 
-// Participant represents a user registered in a tournament
+// ParticipantStatus defines the current state of a participant
+type ParticipantStatus string
+
+// Participant statuses
+const (
+	ParticipantRegistered ParticipantStatus = "REGISTERED"
+	ParticipantWaitlisted ParticipantStatus = "WAITLISTED"
+	ParticipantCheckedIn  ParticipantStatus = "CHECKED_IN"
+	ParticipantEliminated ParticipantStatus = "ELIMINATED"
+)
+
+// Participant represents a tournament participant
 type Participant struct {
-	ID           uuid.UUID  `json:"id"`
-	TournamentID uuid.UUID  `json:"tournament_id"`
-	UserID       uuid.UUID  `json:"user_id"`
-	TeamName     string     `json:"team_name"`
-	Seed         int        `json:"seed"`
-	CheckInTime  *time.Time `json:"check_in_time"`
-	IsCheckedIn  bool       `json:"is_checked_in"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID           uuid.UUID         `json:"id"`
+	TournamentID uuid.UUID         `json:"tournament_id"`
+	UserID       uuid.UUID         `json:"user_id"`
+	Seed         int               `json:"seed"`
+	Status       ParticipantStatus `json:"status"`
+	IsWaitlisted bool              `json:"is_waitlisted"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
-// ParticipantRequest represents the data needed to register for a tournament
+// ParticipantRequest represents the data needed to register a participant
 type ParticipantRequest struct {
-	UserID   uuid.UUID `json:"user_id" binding:"required"`
-	TeamName string    `json:"team_name"`
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Seed   int       `json:"seed"`
 }
 
-// ParticipantResponse represents participant data returned to clients
+// ParticipantResponse represents the data returned to clients
 type ParticipantResponse struct {
-	ID          uuid.UUID `json:"id"`
-	UserID      uuid.UUID `json:"user_id"`
-	Username    string    `json:"username"` 
-	TeamName    string    `json:"team_name"`
-	IsCheckedIn bool      `json:"is_checked_in"`
-	Seed        int       `json:"seed"`
+	ID           uuid.UUID         `json:"id"`
+	TournamentID uuid.UUID         `json:"tournament_id"`
+	UserID       uuid.UUID         `json:"user_id"`
+	Seed         int               `json:"seed"`
+	Status       ParticipantStatus `json:"status"`
+	IsWaitlisted bool              `json:"is_waitlisted"`
+	CreatedAt    time.Time         `json:"created_at"`
 }

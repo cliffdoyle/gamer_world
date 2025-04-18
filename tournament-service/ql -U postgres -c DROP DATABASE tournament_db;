@@ -1,0 +1,23 @@
+                       Table "public.tournament_participants"
+    Column     |           Type           | Collation | Nullable |      Default      
+---------------+--------------------------+-----------+----------+-------------------
+ id            | uuid                     |           | not null | gen_random_uuid()
+ tournament_id | uuid                     |           | not null | 
+ user_id       | uuid                     |           | not null | 
+ team_name     | character varying(100)   |           |          | 
+ seed          | integer                  |           |          | 
+ check_in_time | timestamp with time zone |           |          | 
+ is_checked_in | boolean                  |           |          | false
+ created_at    | timestamp with time zone |           | not null | now()
+Indexes:
+    "tournament_participants_pkey" PRIMARY KEY, btree (id)
+    "idx_tournament_participants_tournament" btree (tournament_id)
+    "tournament_participants_tournament_id_user_id_key" UNIQUE CONSTRAINT, btree (tournament_id, user_id)
+Foreign-key constraints:
+    "tournament_participants_tournament_id_fkey" FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "matches" CONSTRAINT "matches_loser_id_fkey" FOREIGN KEY (loser_id) REFERENCES tournament_participants(id)
+    TABLE "matches" CONSTRAINT "matches_participant1_id_fkey" FOREIGN KEY (participant1_id) REFERENCES tournament_participants(id)
+    TABLE "matches" CONSTRAINT "matches_participant2_id_fkey" FOREIGN KEY (participant2_id) REFERENCES tournament_participants(id)
+    TABLE "matches" CONSTRAINT "matches_winner_id_fkey" FOREIGN KEY (winner_id) REFERENCES tournament_participants(id)
+

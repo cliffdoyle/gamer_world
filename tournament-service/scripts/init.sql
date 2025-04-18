@@ -2,6 +2,7 @@
 CREATE TYPE tournament_format AS ENUM ('SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION','ROUND_ROBIN','SWISS');
 CREATE TYPE tournament_status AS ENUM ('DRAFT', 'REGISTRATION','IN_PROGRESS','COMPLETED','CANCELLED');
 CREATE TYPE match_status AS ENUM ('PENDING', 'IN_PROGRESS', 'COMPLETED','DISPUTED');
+CREATE TYPE participant_status AS ENUM ('REGISTERED', 'WAITLISTED', 'CHECKED_IN', 'ELIMINATED');
 
 --Tournaments table
 CREATE TABLE IF NOT EXISTS tournaments(
@@ -9,14 +10,14 @@ CREATE TABLE IF NOT EXISTS tournaments(
     name VARCHAR(255) NOT NULL,
     description TEXT,
     game VARCHAR(100) NOT NULL,
-    format tounament_format NOT NULL DEFAULT 'SINGLE_ELIMINATION',
+    format tournament_format NOT NULL DEFAULT 'SINGLE_ELIMINATION',
     status tournament_status NOT NULL DEFAULT 'DRAFT',
     max_participants INT,
     registration_deadline TIMESTAMP WITH TIME ZONE,
     start_time TIMESTAMP WITH TIME ZONE,
     end_time TIMESTAMP WITH TIME ZONE,
     created_by UUID NOT NULL,
-    craeted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     rules TEXT,
     prize_pool JSONB,
@@ -25,14 +26,17 @@ CREATE TABLE IF NOT EXISTS tournaments(
 
 --Tournament participants
 CREATE TABLE IF NOT EXISTS tournament_participants (
-    id UUID PRIMARRY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tournament_id UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
     user_id UUID NOT NULL,
     team_name VARCHAR(100),
     seed INT,
+    status participant_status NOT NULL DEFAULT 'REGISTERED',
+    is_waitlisted BOOLEAN DEFAULT FALSE,
     check_in_time TIMESTAMP WITH TIME ZONE,
     is_checked_in BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     UNIQUE(tournament_id, user_id)
 );
 
