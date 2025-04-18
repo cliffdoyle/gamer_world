@@ -63,3 +63,17 @@ type CreateTournamentRequest struct {
 	PrizePool           map[string]interface{} `json:"prize_pool"`
 	CustomFields        map[string]interface{} `json:"custom_fields"`
 }
+
+// UpdateTournamentRequest represents the data for updating a tournament
+type UpdateTournamentRequest struct {
+	Name                string           `json:"name"`
+	Description         string           `json:"description"`
+	Game                string           `json:"game"`
+	Format              TournamentFormat `json:"format"`
+	MaxParticipants     int              `json:"max_participants"`
+	RegistrationDeadline *time.Time      `json:"registration_deadline"`
+	StartTime           *time.Time       `json:"start_time"`
+	Rules               string           `json:"rules"`
+	PrizePool           map[string]interface{} `json:"prize_pool"`
+	CustomFields        map[string]interface{} `json:"custom_fields"`
+}
