@@ -196,6 +196,39 @@ func setupRoutes(ts service.TournamentService) http.Handler {
 		}
 	}).Methods("GET", "PUT", "DELETE")
 
+	// Add status update endpoint
+	router.HandleFunc("/tournaments/{id}/status", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id, err := uuid.Parse(vars["id"])
+		if err != nil {
+			http.Error(w, "Invalid tournament ID", http.StatusBadRequest)
+			return
+		}
+
+		var req struct {
+			Status domain.TournamentStatus `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := ts.UpdateTournamentStatus(r.Context(), id, req.Status); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Get updated tournament
+		tournament, err := ts.GetTournament(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tournament)
+	}).Methods("PUT")
+
 	// Participant routes
 	router.HandleFunc("/tournaments/{id}/participants", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)

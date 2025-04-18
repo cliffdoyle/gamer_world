@@ -272,12 +272,20 @@ func (s *tournamentService) UpdateTournamentStatus(ctx context.Context, id uuid.
 	// Additional validations based on status
 	switch status {
 	case domain.Registration:
-		if tournament.RegistrationDeadline != nil && time.Now().After(*tournament.RegistrationDeadline) {
-			return errors.New("cannot start registration after deadline has passed")
+		if tournament.RegistrationDeadline != nil {
+			now := time.Now().UTC()
+			deadline := tournament.RegistrationDeadline.UTC()
+			if now.After(deadline) {
+				return errors.New("cannot start registration after deadline has passed")
+			}
 		}
 	case domain.InProgress:
-		if tournament.StartTime != nil && time.Now().Before(*tournament.StartTime) {
-			return errors.New("cannot start tournament before scheduled start time")
+		if tournament.StartTime != nil {
+			now := time.Now().UTC()
+			startTime := tournament.StartTime.UTC()
+			if now.Before(startTime) {
+				return errors.New("cannot start tournament before scheduled start time")
+			}
 		}
 		// Check if minimum participants are registered
 		count, err := s.tournamentRepo.GetParticipantCount(ctx, id)
