@@ -77,3 +77,22 @@ type UpdateTournamentRequest struct {
 	PrizePool           map[string]interface{} `json:"prize_pool"`
 	CustomFields        map[string]interface{} `json:"custom_fields"`
 }
+
+// TournamentResponse represents the data returned to clients
+type TournamentResponse struct {
+	ID                  uuid.UUID        `json:"id"`
+	Name                string           `json:"name"`
+	Description         string           `json:"description"`
+	Game                string           `json:"game"`
+	Format              TournamentFormat `json:"format"`
+	Status              TournamentStatus `json:"status"`
+	MaxParticipants     int              `json:"max_participants"`
+	CurrentParticipants int              `json:"current_participants"`
+	RegistrationDeadline *time.Time      `json:"registration_deadline"`
+	StartTime           *time.Time       `json:"start_time"`
+	EndTime             *time.Time       `json:"end_time"`
+	CreatedAt           time.Time        `json:"created_at"`
+	Rules               string           `json:"rules"`
+	PrizePool           map[string]interface{} `json:"prize_pool"`
+	CustomFields        map[string]interface{} `json:"custom_fields"`
+}
