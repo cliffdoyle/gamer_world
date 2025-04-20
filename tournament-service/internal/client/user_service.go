@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"github.com/google/uuid"
 )
 
 type UserService struct {
@@ -13,7 +15,7 @@ type UserService struct {
 }
 
 type UserResponse struct {
-	ID       string `json:"id"`
+	ID       int    `json:"id"`
 	Username string `json:"username"`
 }
 
@@ -26,7 +28,7 @@ func NewUserService() *UserService {
 
 // ValidateToken validates a JWT token with the user service
 func (s *UserService) ValidateToken(token string) (*UserResponse, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/user/validate", s.BaseURL), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/user/profile", s.BaseURL), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +51,14 @@ func (s *UserService) ValidateToken(token string) (*UserResponse, error) {
 	}
 
 	return &user, nil
+}
+
+// GetUserUUID converts the numeric user ID to a UUID using a deterministic method
+func (u *UserResponse) GetUserUUID() uuid.UUID {
+	// Create a deterministic UUID based on the user ID
+	idStr := fmt.Sprintf("user-%d", u.ID)
+	// Use version 5 UUID with DNS namespace
+	return uuid.NewSHA1(uuid.NameSpaceDNS, []byte(idStr))
 }
 
 // GetUserByID retrieves user information by ID
