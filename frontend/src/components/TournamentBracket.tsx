@@ -105,6 +105,35 @@ function ParticipantName({ participantId, isWinner, participants }: ParticipantN
   );
 }
 
+interface BracketLineProps {
+  roundIndex: number;
+  matchIndex: number;
+  totalRounds: number;
+  isWinnerPath: boolean;
+}
+
+function BracketLine({ roundIndex, matchIndex, totalRounds, isWinnerPath }: BracketLineProps) {
+  const height = Math.pow(2, totalRounds - roundIndex - 2) * 160;
+  const marginTop = matchIndex % 2 === 0 ? '0' : `-${height}px`;
+
+  return (
+    <div className="absolute top-1/2 right-0 transform translate-x-full">
+      <div
+        className={`
+          border-r-2 border-t-2
+          ${isWinnerPath ? 'border-green-300' : 'border-gray-200'}
+          transition-colors duration-300 ease-in-out
+        `}
+        style={{
+          width: '2rem',
+          height: `${height}px`,
+          marginTop,
+        }}
+      />
+    </div>
+  );
+}
+
 export default function TournamentBracket({ matches, participants, onMatchClick, isLoading = false, error }: TournamentBracketProps) {
   const [hoveredMatchId, setHoveredMatchId] = useState<string | null>(null);
   const [animatingMatches, setAnimatingMatches] = useState<Set<string>>(new Set());
@@ -183,6 +212,16 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
     }
     
     return true;
+  };
+
+  const isWinnerPath = (match: Match, nextRoundMatches: Match[]): boolean => {
+    if (!match.winnerId) return false;
+    
+    const nextMatch = nextRoundMatches.find(m =>
+      m.participant1Id === match.winnerId || m.participant2Id === match.winnerId
+    );
+    
+    return nextMatch ? nextMatch.winnerId === match.winnerId : false;
   };
 
   if (error) {
@@ -306,16 +345,12 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                         </div>
                       </div>
                       {roundIndex < rounds.length - 1 && (
-                        <div className="absolute top-1/2 right-0 transform translate-x-full">
-                          <div
-                            className="border-t-2 border-r-2 border-gray-200"
-                            style={{
-                              width: '2rem',
-                              height: `${Math.pow(2, rounds.length - roundIndex - 2) * 160}px`,
-                              marginTop: matchIndex % 2 === 0 ? '0' : `-${Math.pow(2, rounds.length - roundIndex - 2) * 160}px`,
-                            }}
-                          />
-                        </div>
+                        <BracketLine
+                          roundIndex={roundIndex}
+                          matchIndex={matchIndex}
+                          totalRounds={rounds.length}
+                          isWinnerPath={isWinnerPath(match, rounds[roundIndex + 1])}
+                        />
                       )}
                     </div>
                   </div>
