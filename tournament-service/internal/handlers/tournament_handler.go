@@ -159,13 +159,16 @@ func (h *TournamentHandler) RegisterParticipant(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Get user ID from context
+	userID := r.Context().Value("user_id").(uuid.UUID)
+
 	var request domain.ParticipantRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	participant, err := h.tournamentService.RegisterParticipant(r.Context(), tournamentID, &request)
+	participant, err := h.tournamentService.RegisterParticipant(r.Context(), tournamentID, userID, &request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
