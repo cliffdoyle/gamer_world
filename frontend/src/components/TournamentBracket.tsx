@@ -34,6 +34,44 @@ interface MatchTooltipProps {
   getParticipantName: (id: string) => string;
 }
 
+interface ParticipantNameProps {
+  participantId: string;
+  isWinner: boolean;
+  participants: Participant[];
+}
+
+function ParticipantName({ participantId, isWinner, participants }: ParticipantNameProps) {
+  const participant = participants.find(p => p.id === participantId);
+  const displayName = participant ? participant.userId : 'TBD';
+  
+  return (
+    <div className="flex items-center">
+      <span
+        className={`
+          text-sm font-medium truncate max-w-[120px]
+          ${isWinner ? 'text-green-900' : 'text-gray-900'}
+        `}
+        title={displayName}
+      >
+        {displayName}
+      </span>
+      {isWinner && (
+        <svg
+          className="w-4 h-4 ml-1 text-green-600"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path
+            fillRule="evenodd"
+            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+            clipRule="evenodd"
+          />
+        </svg>
+      )}
+    </div>
+  );
+}
+
 function MatchTooltip({ match, getParticipantName }: MatchTooltipProps) {
   const formattedDate = new Date(match.createdAt).toLocaleDateString();
   const status = match.status.charAt(0).toUpperCase() + match.status.slice(1).toLowerCase();
@@ -196,20 +234,11 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                               transition-colors duration-300 ease-in-out
                             `}
                           >
-                            <span className={`
-                              text-sm font-medium
-                              ${match.winnerId === match.participant1Id ? 'text-green-900' : 'text-gray-900'}
-                            `}>
-                              {getParticipantName(match.participant1Id)}
-                            </span>
-                            {match.score && (
-                              <span className={`
-                                text-sm font-semibold
-                                ${match.winnerId === match.participant1Id ? 'text-green-900' : 'text-gray-900'}
-                              `}>
-                                {match.score.participant1}
-                              </span>
-                            )}
+                            <ParticipantName
+                              participantId={match.participant1Id}
+                              isWinner={match.winnerId === match.participant1Id}
+                              participants={participants}
+                            />
                           </div>
                           <div
                             className={`
@@ -218,20 +247,11 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                               transition-colors duration-300 ease-in-out
                             `}
                           >
-                            <span className={`
-                              text-sm font-medium
-                              ${match.winnerId === match.participant2Id ? 'text-green-900' : 'text-gray-900'}
-                            `}>
-                              {getParticipantName(match.participant2Id)}
-                            </span>
-                            {match.score && (
-                              <span className={`
-                                text-sm font-semibold
-                                ${match.winnerId === match.participant2Id ? 'text-green-900' : 'text-gray-900'}
-                              `}>
-                                {match.score.participant2}
-                              </span>
-                            )}
+                            <ParticipantName
+                              participantId={match.participant2Id}
+                              isWinner={match.winnerId === match.participant2Id}
+                              participants={participants}
+                            />
                           </div>
                         </div>
                       </div>
