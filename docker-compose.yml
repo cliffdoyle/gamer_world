@@ -17,6 +17,24 @@ services:
     networks:
       - backend
 
+  tournament-service:
+    container_name: tournament_service
+    build:
+      context: ./tournament-service
+    ports:
+      - "8082:8082"  # Tournament service port
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+    env_file:
+      - ./tournament-service/.env
+    entrypoint: ["/wait-for-postgres.sh", "postgres", "--", "/bin/sh", "-c", "/run-migrations.sh && ./tournament-service"]
+    restart: unless-stopped
+    networks:
+      - backend
+
   postgres:
     container_name: postgres_db
     image: postgres:14-alpine
