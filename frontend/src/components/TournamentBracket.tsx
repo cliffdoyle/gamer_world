@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 interface Match {
   id: string;
@@ -29,7 +29,27 @@ interface TournamentBracketProps {
   error?: string;
 }
 
+interface MatchTooltipProps {
+  match: Match;
+  getParticipantName: (id: string) => string;
+}
+
+function MatchTooltip({ match, getParticipantName }: MatchTooltipProps) {
+  const formattedDate = new Date(match.createdAt).toLocaleDateString();
+  const status = match.status.charAt(0).toUpperCase() + match.status.slice(1).toLowerCase();
+  
+  return (
+    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded shadow-lg z-10">
+      <div className="font-medium mb-1">{status}</div>
+      <div className="text-gray-300 text-xs">Created: {formattedDate}</div>
+      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
+    </div>
+  );
+}
+
 export default function TournamentBracket({ matches, participants, onMatchClick, isLoading = false, error }: TournamentBracketProps) {
+  const [hoveredMatchId, setHoveredMatchId] = useState<string | null>(null);
+
   const rounds = useMemo(() => {
     const roundsMap = new Map<number, Match[]>();
     matches.forEach(match => {
@@ -118,12 +138,17 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                     relative flex flex-col justify-center
                     ${onMatchClick ? 'cursor-pointer' : ''}
                   `}
+                  onMouseEnter={() => setHoveredMatchId(match.id)}
+                  onMouseLeave={() => setHoveredMatchId(null)}
                   onClick={() => onMatchClick?.(match)}
                   onKeyPress={(e) => handleMatchKeyPress(e, match)}
                   role="button"
                   tabIndex={0}
                   aria-label={`Match between ${getParticipantName(match.participant1Id)} and ${getParticipantName(match.participant2Id)}`}
                 >
+                  {hoveredMatchId === match.id && (
+                    <MatchTooltip match={match} getParticipantName={getParticipantName} />
+                  )}
                   <div className="absolute left-0 w-full">
                     <div className="mx-2">
                       <div
