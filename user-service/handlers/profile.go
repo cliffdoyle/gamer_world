@@ -1,13 +1,12 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 
 	"github.com/cliffdoyle/gamer_world/user-service/database"
 	"github.com/cliffdoyle/gamer_world/user-service/models"
+	"github.com/cliffdoyle/gamer_world/user-service/utils"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func GetUserProfile(c *gin.Context) {
@@ -16,15 +15,10 @@ func GetUserProfile(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	// Fetch user profile from the database
-	user := models.User{}
-	err := database.DB.QueryRow("SELECT id, username FROM users WHERE username=$1", username).Scan(&user.ID, &user.Username)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching user profile"})
+
+	var user models.User
+	if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
@@ -42,18 +36,13 @@ func UpdateUserProfile(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	// Fetch user profile from the database
-	user := models.User{}
-	err := database.DB.QueryRow("SELECT id, username FROM users WHERE username=$1", username).Scan(&user.ID, &user.Username)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching user profile"})
+
+	var user models.User
+	if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
-	// Bind the input data
+
 	var input struct {
 		NewUsername string `json:"username"`
 		NewPassword string `json:"password"`
@@ -62,44 +51,34 @@ func UpdateUserProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
-	// Update the user profile in the database
+
 	if input.NewUsername != "" && input.NewUsername != user.Username {
 		// Check if the new username already exists
-		var count int
-		err := database.DB.QueryRow("SELECT COUNT(*) FROM users WHERE username=$1", input.NewUsername).Scan(&count)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking username"})
-			return
-		}
+		var count int64
+		database.DB.Model(&models.User{}).Where("username = ?", input.NewUsername).Count(&count)
 		if count > 0 {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
 			return
 		}
-		// Update the username
-		_, err = database.DB.Exec("UPDATE users SET username=$1 WHERE id=$2", input.NewUsername, user.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating username"})
-			return
-		}
 
+		user.Username = input.NewUsername
 	}
-	//Update password if provided
+
 	if input.NewPassword != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+		hashedPassword, err := utils.HashPassword(input.NewPassword)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
 			return
 		}
-		_, err = database.DB.Exec("UPDATE users SET password=$1 WHERE id=$2", string(hashedPassword), user.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating password"})
-			return
-		}
+		user.Password = hashedPassword
 	}
-	// Return the success response
+
+	if err := database.DB.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user profile"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User profile updated successfully"})
-
 }
 
 func DeleteUserAccount(c *gin.Context) {
@@ -108,28 +87,17 @@ func DeleteUserAccount(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	// Fetch user profile from the database
-	user := models.User{}
-	err := database.DB.QueryRow("SELECT id, username FROM users WHERE username=$1", username).Scan(&user.ID, &user.Username)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching user profile"})
-		return
-	}
-	// Delete the user account from the database
-	res, err := database.DB.Exec("DELETE FROM users WHERE id=$1", user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting user account"})
-		return
-	}
-	// Check if any rows were affected
-	rowsAffected, _ := res.RowsAffected()
-	if rowsAffected == 0 {
+
+	var user models.User
+	if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
+
+	if err := database.DB.Delete(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting user account"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "User account deleted successfully"})
 }
