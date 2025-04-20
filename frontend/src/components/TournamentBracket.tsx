@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 interface Match {
   id: string;
@@ -49,6 +49,8 @@ function MatchTooltip({ match, getParticipantName }: MatchTooltipProps) {
 
 export default function TournamentBracket({ matches, participants, onMatchClick, isLoading = false, error }: TournamentBracketProps) {
   const [hoveredMatchId, setHoveredMatchId] = useState<string | null>(null);
+  const [animatingMatches, setAnimatingMatches] = useState<Set<string>>(new Set());
+  const [prevMatches, setPrevMatches] = useState(matches);
 
   const rounds = useMemo(() => {
     const roundsMap = new Map<number, Match[]>();
@@ -61,6 +63,30 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
     return Array.from(roundsMap.entries())
       .sort(([a], [b]) => a - b)
       .map(([_, matches]) => matches);
+  }, [matches]);
+
+  useEffect(() => {
+    const changedMatches = new Set<string>();
+    matches.forEach(match => {
+      const prevMatch = prevMatches.find(m => m.id === match.id);
+      if (prevMatch && (
+        prevMatch.status !== match.status ||
+        prevMatch.winnerId !== match.winnerId ||
+        JSON.stringify(prevMatch.score) !== JSON.stringify(match.score)
+      )) {
+        changedMatches.add(match.id);
+      }
+    });
+    
+    if (changedMatches.size > 0) {
+      setAnimatingMatches(changedMatches);
+      const timer = setTimeout(() => {
+        setAnimatingMatches(new Set());
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+    
+    setPrevMatches(matches);
   }, [matches]);
 
   const getParticipantName = (participantId: string) => {
@@ -137,6 +163,8 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                   className={`
                     relative flex flex-col justify-center
                     ${onMatchClick ? 'cursor-pointer' : ''}
+                    ${animatingMatches.has(match.id) ? 'animate-pulse' : ''}
+                    transition-all duration-300 ease-in-out
                   `}
                   onMouseEnter={() => setHoveredMatchId(match.id)}
                   onMouseLeave={() => setHoveredMatchId(null)}
@@ -157,6 +185,7 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                           ${getMatchStatus(match) === 'completed' ? 'border-green-200' : 
                             getMatchStatus(match) === 'in_progress' ? 'border-blue-200' :
                             getMatchStatus(match) === 'scheduled' ? 'border-gray-200' : 'border-gray-100'}
+                          transition-colors duration-300 ease-in-out
                         `}
                       >
                         <div className="flex flex-col divide-y divide-gray-100">
@@ -164,6 +193,7 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                             className={`
                               flex items-center justify-between p-3
                               ${match.winnerId === match.participant1Id ? 'bg-green-50' : ''}
+                              transition-colors duration-300 ease-in-out
                             `}
                           >
                             <span className={`
@@ -185,6 +215,7 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                             className={`
                               flex items-center justify-between p-3
                               ${match.winnerId === match.participant2Id ? 'bg-green-50' : ''}
+                              transition-colors duration-300 ease-in-out
                             `}
                           >
                             <span className={`
