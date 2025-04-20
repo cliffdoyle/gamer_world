@@ -16,6 +16,7 @@ import (
 	"github.com/cliffdoyle/tournament-service/internal/domain"
 	"github.com/cliffdoyle/tournament-service/internal/repository"
 	"github.com/cliffdoyle/tournament-service/internal/service"
+	"github.com/cliffdoyle/tournament-service/internal/service/bracket"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
@@ -53,7 +54,7 @@ func main() {
 	messageRepo := repository.NewMessageRepository(db)
 
 	// Initialize services
-	bracketGen := service.NewBracketGenerator()
+	bracketGen := bracket.NewSingleEliminationGenerator()
 	tournamentService := service.NewTournamentService(
 		tournamentRepo,
 		participantRepo,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cliffdoyle/tournament-service/internal/domain"
 	"github.com/cliffdoyle/tournament-service/internal/repository"
+	"github.com/cliffdoyle/tournament-service/internal/service/bracket"
 	"github.com/google/uuid"
 )
 
@@ -46,7 +47,7 @@ type tournamentService struct {
 	participantRepo repository.ParticipantRepository
 	matchRepo       repository.MatchRepository
 	messageRepo     repository.MessageRepository
-	bracketGen      BracketGenerator
+	bracketGen      bracket.Generator
 }
 
 // NewTournamentService creates a new tournament service
@@ -55,7 +56,7 @@ func NewTournamentService(
 	participantRepo repository.ParticipantRepository,
 	matchRepo repository.MatchRepository,
 	messageRepo repository.MessageRepository,
-	bracketGen BracketGenerator,
+	bracketGen bracket.Generator,
 ) TournamentService {
 	return &tournamentService{
 		tournamentRepo:  tournamentRepo,
@@ -539,17 +540,19 @@ func (s *tournamentService) UpdateParticipantSeed(ctx context.Context, tournamen
 	return nil
 }
 
-// GenerateBracket creates matches for a tournament
+// GenerateBracket generates the tournament bracket based on format
 func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uuid.UUID) error {
 	// Get tournament
 	tournament, err := s.tournamentRepo.GetByID(ctx, tournamentID)
 	if err != nil {
 		return fmt.Errorf("failed to get tournament: %w", err)
 	}
+
 	// Check tournament status
 	if tournament.Status != domain.Draft && tournament.Status != domain.Registration {
 		return errors.New("cannot generate bracket after tournament has started")
 	}
+
 	// Get participants
 	participants, err := s.participantRepo.ListByTournament(ctx, tournamentID)
 	if err != nil {
@@ -561,9 +564,6 @@ func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uu
 		return errors.New("need at least 2 participants to generate bracket")
 	}
 
-	// Sort participants by seed
-	// In real implementation, sort by a specific algorithm based on seeds
-
 	// Delete existing matches if any
 	err = s.matchRepo.Delete(ctx, tournamentID)
 	if err != nil {
@@ -571,32 +571,21 @@ func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uu
 	}
 
 	// Generate matches based on format
-	var matches []*domain.Match
-
-	switch tournament.Format {
-	case domain.SingleElimination:
-		matches, err = s.bracketGen.GenerateSingleElimination(ctx, tournamentID, participants)
-	case domain.DoubleElimination:
-		matches, err = s.bracketGen.GenerateDoubleElimination(ctx, tournamentID, participants)
-	case domain.RoundRobin:
-		matches, err = s.bracketGen.GenerateRoundRobin(ctx, tournamentID, participants)
-	case domain.Swiss:
-		// Default to log2(n) rounds for Swiss
-		rounds := int(math.Ceil(math.Log2(float64(len(participants)))))
-		matches, err = s.bracketGen.GenerateSwiss(ctx, tournamentID, participants, rounds)
-	default:
-		return fmt.Errorf("unsupported tournament format: %s", tournament.Format)
+	options := make(map[string]interface{})
+	if tournament.Format == domain.Swiss {
+		// For Swiss, we'll use log2(n) rounds by default
+		options["rounds"] = int(math.Ceil(math.Log2(float64(len(participants)))))
 	}
 
+	matches, err := s.bracketGen.Generate(ctx, tournamentID, bracket.Format(tournament.Format), participants, options)
 	if err != nil {
 		return fmt.Errorf("failed to generate bracket: %w", err)
 	}
 
-	// Save matches to database
+	// Save matches
 	for _, match := range matches {
-		err = s.matchRepo.Create(ctx, match)
-		if err != nil {
-			return fmt.Errorf("failed to save match: %w", err)
+		if err := s.matchRepo.Create(ctx, match); err != nil {
+			return fmt.Errorf("failed to create match: %w", err)
 		}
 	}
 
@@ -605,8 +594,7 @@ func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uu
 
 // GetMatches retrieves all matches for a tournament
 func (s *tournamentService) GetMatches(ctx context.Context, tournamentID uuid.UUID) ([]*domain.MatchResponse, error) {
-	// Get matches
-	matches, err := s.matchRepo.ListByTournament(ctx, tournamentID)
+	matches, err := s.matchRepo.GetByTournamentID(ctx, tournamentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get matches: %w", err)
 	}
@@ -822,15 +810,11 @@ func (s *tournamentService) UpdateMatchScore(ctx context.Context, matchID uuid.U
 	return nil
 }
 
-// checkTournamentCompletion checks if all matches are completed
+// checkTournamentCompletion checks if all matches in a tournament are completed
 func (s *tournamentService) checkTournamentCompletion(ctx context.Context, tournamentID uuid.UUID) (bool, error) {
-	matches, err := s.matchRepo.ListByTournament(ctx, tournamentID)
+	matches, err := s.matchRepo.GetByTournamentID(ctx, tournamentID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get matches: %w", err)
-	}
-
-	if len(matches) == 0 {
-		return false, nil
 	}
 
 	for _, match := range matches {
