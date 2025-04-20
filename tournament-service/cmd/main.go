@@ -113,11 +113,7 @@ func main() {
 				return
 			}
 
-			creatorID, err := uuid.Parse(user.ID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
-				return
-			}
+			creatorID := user.GetUserUUID()
 
 			tournament, err := tournamentService.CreateTournament(c.Request.Context(), &req, creatorID)
 			if err != nil {
@@ -213,11 +209,7 @@ func main() {
 				return
 			}
 
-			userID, err := uuid.Parse(user.ID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
-				return
-			}
+			userID := user.GetUserUUID()
 
 			participant, err := tournamentService.RegisterParticipant(c.Request.Context(), tournamentID, userID, &req)
 			if err != nil {
@@ -249,12 +241,7 @@ func main() {
 				return
 			}
 
-			userID, err := uuid.Parse(user.ID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
-				return
-			}
-
+			userID := user.GetUserUUID()
 			message, err := tournamentService.SendMessage(c.Request.Context(), tournamentID, userID, &req)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
