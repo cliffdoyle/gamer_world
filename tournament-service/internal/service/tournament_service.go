@@ -23,7 +23,7 @@ type TournamentService interface {
 	UpdateTournamentStatus(ctx context.Context, id uuid.UUID, status domain.TournamentStatus) error
 
 	// Participant operations
-	RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error)
+	RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error)
 	UnregisterParticipant(ctx context.Context, tournamentID, userID uuid.UUID) error
 	GetParticipants(ctx context.Context, tournamentID uuid.UUID) ([]*domain.ParticipantResponse, error)
 	CheckInParticipant(ctx context.Context, tournamentID, userID uuid.UUID) error
@@ -354,58 +354,46 @@ func isValidStatusTransition(from, to domain.TournamentStatus) bool {
 	return false
 }
 
-// RegisterParticipant registers a user for a tournament
-func (s *tournamentService) RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error) {
+// RegisterParticipant registers a participant for a tournament
+func (s *tournamentService) RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error) {
 	// Get tournament
 	tournament, err := s.tournamentRepo.GetByID(ctx, tournamentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tournament: %w", err)
 	}
 
-	// Validate tournament status
+	// Check tournament status
 	if tournament.Status != domain.Registration {
 		return nil, errors.New("tournament is not open for registration")
 	}
 
-	// Check registration deadline
-	if tournament.RegistrationDeadline != nil && time.Now().After(*tournament.RegistrationDeadline) {
-		return nil, errors.New("registration deadline has passed")
-	}
-
-	// Check if user is already registered
-	existingParticipant, err := s.participantRepo.GetByTournamentAndUser(ctx, tournamentID, request.UserID)
-	if err == nil && existingParticipant != nil {
-		return nil, errors.New("user is already registered for this tournament")
-	}
-
-	// Get current participant count
+	// Check if tournament is full
 	count, err := s.tournamentRepo.GetParticipantCount(ctx, tournamentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get participant count: %w", err)
+	}
+
+	isWaitlisted := false
+	if count >= tournament.MaxParticipants {
+		isWaitlisted = true
 	}
 
 	// Create participant
 	participant := &domain.Participant{
 		ID:           uuid.New(),
 		TournamentID: tournamentID,
-		UserID:       request.UserID,
+		UserID:       userID,
 		Seed:         request.Seed,
 		Status:       domain.ParticipantRegistered,
-		IsWaitlisted: false,
+		IsWaitlisted: isWaitlisted,
 		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
-	// Check if tournament is full
-	if count >= tournament.MaxParticipants {
-		// Add to waitlist
-		participant.IsWaitlisted = true
-		participant.Status = domain.ParticipantWaitlisted
-	}
-
-	// Save participant
+	// Save to database
 	err = s.participantRepo.Create(ctx, participant)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create participant: %w", err)
+		return nil, fmt.Errorf("failed to register participant: %w", err)
 	}
 
 	return participant, nil
