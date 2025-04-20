@@ -1,15 +1,16 @@
 package database
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
 
-	_ "github.com/lib/pq"
+	"github.com/cliffdoyle/gamer_world/user-service/models"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
 func Connect() {
 	dbHost := os.Getenv("DB_HOST")
@@ -25,14 +26,18 @@ func Connect() {
 		dbPassword,
 		dbName,
 	)
+
 	var err error
-	DB, err = sql.Open("postgres", dsn)
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	err = DB.Ping()
-	if err != nil {
-		log.Fatal("Failed to ping database:", err)
-	}
+
+	// Enable UUID extension
+	DB.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+
+	// Auto migrate the schema
+	DB.AutoMigrate(&models.User{})
+
 	log.Println("Connected to database successfully")
 }
