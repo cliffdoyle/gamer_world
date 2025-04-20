@@ -29,9 +29,42 @@ interface TournamentBracketProps {
   error?: string;
 }
 
+interface ScoreDisplayProps {
+  score: number;
+  isWinner: boolean;
+}
+
+function ScoreDisplay({ score, isWinner }: ScoreDisplayProps) {
+  return (
+    <span
+      className={`
+        text-sm font-semibold px-2 py-1 rounded
+        ${isWinner
+          ? 'bg-green-100 text-green-900'
+          : 'bg-gray-100 text-gray-900'}
+      `}
+    >
+      {score}
+    </span>
+  );
+}
+
 interface MatchTooltipProps {
   match: Match;
   getParticipantName: (id: string) => string;
+}
+
+function MatchTooltip({ match, getParticipantName }: MatchTooltipProps) {
+  const formattedDate = new Date(match.createdAt).toLocaleDateString();
+  const status = match.status.charAt(0).toUpperCase() + match.status.slice(1).toLowerCase();
+  
+  return (
+    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded shadow-lg z-10">
+      <div className="font-medium mb-1">{status}</div>
+      <div className="text-gray-300 text-xs">Created: {formattedDate}</div>
+      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
+    </div>
+  );
 }
 
 interface ParticipantNameProps {
@@ -68,19 +101,6 @@ function ParticipantName({ participantId, isWinner, participants }: ParticipantN
           />
         </svg>
       )}
-    </div>
-  );
-}
-
-function MatchTooltip({ match, getParticipantName }: MatchTooltipProps) {
-  const formattedDate = new Date(match.createdAt).toLocaleDateString();
-  const status = match.status.charAt(0).toUpperCase() + match.status.slice(1).toLowerCase();
-  
-  return (
-    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded shadow-lg z-10">
-      <div className="font-medium mb-1">{status}</div>
-      <div className="text-gray-300 text-xs">Created: {formattedDate}</div>
-      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
     </div>
   );
 }
@@ -125,7 +145,7 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
     }
     
     setPrevMatches(matches);
-  }, [matches]);
+  }, [matches, prevMatches]);
 
   const getParticipantName = (participantId: string) => {
     const participant = participants.find(p => p.id === participantId);
@@ -145,11 +165,24 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
     return 'scheduled';
   };
 
-  const handleMatchKeyPress = (event: React.KeyboardEvent, match: Match) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      onMatchClick?.(match);
+  const isValidScore = (match: Match): boolean => {
+    if (!match.score) return false;
+    
+    const { participant1, participant2 } = match.score;
+    
+    // Scores must be non-negative
+    if (participant1 < 0 || participant2 < 0) return false;
+    
+    // At least one participant must have a score
+    if (participant1 === 0 && participant2 === 0) return false;
+    
+    // Winner must have higher score
+    if (match.winnerId) {
+      if (match.winnerId === match.participant1Id && participant1 <= participant2) return false;
+      if (match.winnerId === match.participant2Id && participant2 <= participant1) return false;
     }
+    
+    return true;
   };
 
   if (error) {
@@ -207,7 +240,12 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                   onMouseEnter={() => setHoveredMatchId(match.id)}
                   onMouseLeave={() => setHoveredMatchId(null)}
                   onClick={() => onMatchClick?.(match)}
-                  onKeyPress={(e) => handleMatchKeyPress(e, match)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onMatchClick?.(match);
+                    }
+                  }}
                   role="button"
                   tabIndex={0}
                   aria-label={`Match between ${getParticipantName(match.participant1Id)} and ${getParticipantName(match.participant2Id)}`}
@@ -239,6 +277,12 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                               isWinner={match.winnerId === match.participant1Id}
                               participants={participants}
                             />
+                            {match.score && isValidScore(match) && (
+                              <ScoreDisplay
+                                score={match.score.participant1}
+                                isWinner={match.winnerId === match.participant1Id}
+                              />
+                            )}
                           </div>
                           <div
                             className={`
@@ -252,6 +296,12 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                               isWinner={match.winnerId === match.participant2Id}
                               participants={participants}
                             />
+                            {match.score && isValidScore(match) && (
+                              <ScoreDisplay
+                                score={match.score.participant2}
+                                isWinner={match.winnerId === match.participant2Id}
+                              />
+                            )}
                           </div>
                         </div>
                       </div>
