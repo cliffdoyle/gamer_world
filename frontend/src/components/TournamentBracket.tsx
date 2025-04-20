@@ -224,6 +224,22 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
     return nextMatch ? nextMatch.winnerId === match.winnerId : false;
   };
 
+  const getScaleFactor = () => {
+    if (typeof window === 'undefined') return 1;
+    return window.innerWidth < 640 ? 0.7 : 1;
+  };
+
+  const [scale, setScale] = useState(getScaleFactor());
+
+  useEffect(() => {
+    const handleResize = () => {
+      setScale(getScaleFactor());
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-96" role="alert" aria-live="polite">
@@ -248,8 +264,14 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
   }
 
   return (
-    <div className="overflow-x-auto" role="region" aria-label="Tournament Bracket">
-      <div className="inline-flex space-x-8 p-8">
+    <div className="overflow-x-auto -mx-4 sm:mx-0" role="region" aria-label="Tournament Bracket">
+      <div 
+        className="inline-flex space-x-4 sm:space-x-8 p-4 sm:p-8 min-w-full"
+        style={{
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left'
+        }}
+      >
         {rounds.map((roundMatches, roundIndex) => (
           <div
             key={roundIndex}
@@ -263,7 +285,8 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
             }
             style={{
               height: `${Math.pow(2, rounds.length - roundIndex - 1) * 160}px`,
-              minHeight: '160px'
+              minHeight: '160px',
+              minWidth: '280px'
             }}
           >
             <div className="flex flex-col justify-around h-full">
@@ -275,16 +298,13 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                     ${onMatchClick ? 'cursor-pointer' : ''}
                     ${animatingMatches.has(match.id) ? 'animate-pulse' : ''}
                     transition-all duration-300 ease-in-out
+                    touch-manipulation
                   `}
+                  onClick={() => onMatchClick?.(match)}
+                  onTouchStart={() => setHoveredMatchId(match.id)}
+                  onTouchEnd={() => setHoveredMatchId(null)}
                   onMouseEnter={() => setHoveredMatchId(match.id)}
                   onMouseLeave={() => setHoveredMatchId(null)}
-                  onClick={() => onMatchClick?.(match)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onMatchClick?.(match);
-                    }
-                  }}
                   role="button"
                   tabIndex={0}
                   aria-label={`Match between ${getParticipantName(match.participant1Id)} and ${getParticipantName(match.participant2Id)}`}
@@ -358,7 +378,7 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
               ))}
             </div>
             <div className="text-center mt-4">
-              <span className="text-sm font-medium text-gray-500">
+              <span className="text-xs sm:text-sm font-medium text-gray-500">
                 {roundIndex === rounds.length - 1 ? 'Final' :
                  roundIndex === rounds.length - 2 ? 'Semi-Finals' :
                  roundIndex === rounds.length - 3 ? 'Quarter-Finals' :
