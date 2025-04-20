@@ -61,9 +61,16 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
     return 'scheduled';
   };
 
+  const handleMatchKeyPress = (event: React.KeyboardEvent, match: Match) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onMatchClick?.(match);
+    }
+  };
+
   if (error) {
     return (
-      <div className="flex items-center justify-center h-96">
+      <div className="flex items-center justify-center h-96" role="alert" aria-live="polite">
         <div className="text-red-500 text-center">
           <svg className="w-12 h-12 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -76,19 +83,28 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="flex items-center justify-center h-96" role="status" aria-live="polite">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500">
+          <span className="sr-only">Loading tournament bracket...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" role="region" aria-label="Tournament Bracket">
       <div className="inline-flex space-x-8 p-8">
         {rounds.map((roundMatches, roundIndex) => (
           <div
             key={roundIndex}
             className="flex flex-col justify-around"
+            role="group"
+            aria-label={
+              roundIndex === rounds.length - 1 ? 'Final Round' :
+              roundIndex === rounds.length - 2 ? 'Semi-Finals' :
+              roundIndex === rounds.length - 3 ? 'Quarter-Finals' :
+              `Round ${roundIndex + 1}`
+            }
             style={{
               height: `${Math.pow(2, rounds.length - roundIndex - 1) * 160}px`,
               minHeight: '160px'
@@ -103,6 +119,10 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                     ${onMatchClick ? 'cursor-pointer' : ''}
                   `}
                   onClick={() => onMatchClick?.(match)}
+                  onKeyPress={(e) => handleMatchKeyPress(e, match)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Match between ${getParticipantName(match.participant1Id)} and ${getParticipantName(match.participant2Id)}`}
                 >
                   <div className="absolute left-0 w-full">
                     <div className="mx-2">
