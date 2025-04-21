@@ -17,6 +17,7 @@ import (
 	"github.com/cliffdoyle/tournament-service/internal/repository"
 	"github.com/cliffdoyle/tournament-service/internal/service"
 	"github.com/cliffdoyle/tournament-service/internal/service/bracket"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -35,7 +36,7 @@ func main() {
 	dbUser := getEnvOrDefault("DB_USER", "postgres")
 	dbPass := getEnvOrDefault("DB_PASSWORD", "postgres")
 	dbName := getEnvOrDefault("DB_NAME", "tournament_db")
-	serverPort := getEnvOrDefault("SERVER_PORT", "8080")
+	serverPort := getEnvOrDefault("SERVER_PORT", "8082")
 
 	dbConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPass, dbName)
@@ -50,6 +51,16 @@ func main() {
 		log.Fatalf("Failed to ping database: %v", err)
 	}
 	log.Println("Successfully connected to database")
+
+	// Initialize router
+	router := gin.Default()
+
+	// Add CORS middleware
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"http://localhost:3000"}
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	router.Use(cors.New(config))
 
 	// Initialize services
 	userService := client.NewUserService()
@@ -66,9 +77,6 @@ func main() {
 		messageRepo,
 		bracketGen,
 	)
-
-	// Initialize router
-	router := gin.Default()
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
@@ -91,6 +99,43 @@ func main() {
 			"page":        page,
 			"page_size":   pageSize,
 		})
+	})
+
+	router.GET("/tournaments/:id", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
+			return
+		}
+
+		tournament, err := tournamentService.GetTournament(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, tournament)
+	})
+
+	// Add participants route
+	router.GET("/tournaments/:id/participants", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
+			return
+		}
+
+		participants, err := tournamentService.GetParticipants(c.Request.Context(), id)
+		if err != nil {
+			if _, ok := err.(*service.ErrTournamentNotFound); ok {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, participants)
 	})
 
 	// Protected routes
@@ -195,7 +240,9 @@ func main() {
 				return
 			}
 
-			var req domain.ParticipantRequest
+			var req struct {
+				Seed int `json:"seed"`
+			}
 			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
@@ -211,7 +258,13 @@ func main() {
 
 			userID := user.GetUserUUID()
 
-			participant, err := tournamentService.RegisterParticipant(c.Request.Context(), tournamentID, userID, &req)
+			// Create participant request
+			participantReq := &domain.ParticipantRequest{
+				UserID: userID,
+				Seed:   req.Seed,
+			}
+
+			participant, err := tournamentService.RegisterParticipant(c.Request.Context(), tournamentID, userID, participantReq)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
