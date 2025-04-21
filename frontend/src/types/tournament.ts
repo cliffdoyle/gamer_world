@@ -11,17 +11,16 @@ export interface Tournament {
   status: TournamentStatus;
   maxParticipants: number;
   currentParticipants: number;
+  allowWaitlist: boolean;
+  startDate: string;
+  endDate: string;
+  registrationDeadline: string;
+  creatorId: string;
   createdAt: string;
-  startDate?: string;
-  registrationDeadline?: string;
-  endTime?: string;
+  updatedAt: string;
   rules?: string;
-  allowWaitlist?: boolean;
-  prizePool?: {
-    currency: string;
-    amount: number;
-  };
-  customFields?: Record<string, any>;
+  prizePool?: any;
+  customFields?: any;
 }
 
 export interface Match {

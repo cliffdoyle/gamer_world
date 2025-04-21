@@ -27,6 +27,7 @@ export default function TournamentDetailClient({ tournamentId }: TournamentDetai
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [newParticipantName, setNewParticipantName] = useState('');
 
   const handleMatchClick = (match: Match) => {
     setSelectedMatch(match);
@@ -60,19 +61,18 @@ export default function TournamentDetailClient({ tournamentId }: TournamentDetai
       console.log('Making tournament request...');
       // Fetch tournament details
       const tournamentResponse = await fetch(`http://localhost:8082/tournaments/${tournamentId}`, { 
-        headers,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
         credentials: 'include'
       });
       
       console.log('Tournament response status:', tournamentResponse.status);
       
       if (!tournamentResponse.ok) {
-        if (tournamentResponse.status === 401) {
-          console.log('Unauthorized request - redirecting to login');
-          router.push('/auth/login');
-          return;
-        }
-        throw new Error(`Failed to fetch tournament: ${tournamentResponse.status}`);
+        const errorData = await tournamentResponse.json();
+        throw new Error(errorData.error || `Failed to fetch tournament: ${tournamentResponse.status}`);
       }
 
       const tournamentData = await tournamentResponse.json();
@@ -81,29 +81,37 @@ export default function TournamentDetailClient({ tournamentId }: TournamentDetai
 
       // Fetch participants
       const participantsResponse = await fetch(`http://localhost:8082/tournaments/${tournamentId}/participants`, { 
-        headers,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
         credentials: 'include'
       });
       
       if (!participantsResponse.ok) {
-        throw new Error('Failed to fetch participants');
+        const errorData = await participantsResponse.json();
+        throw new Error(errorData.error || 'Failed to fetch participants');
       }
       
       const participantsData = await participantsResponse.json();
-      setParticipants(participantsData);
+      setParticipants(participantsData || []); // Ensure we always set an array
 
       // Fetch matches
       const matchesResponse = await fetch(`http://localhost:8082/tournaments/${tournamentId}/matches`, { 
-        headers,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
         credentials: 'include'
       });
       
       if (!matchesResponse.ok) {
-        throw new Error('Failed to fetch matches');
+        const errorData = await matchesResponse.json();
+        throw new Error(errorData.error || 'Failed to fetch matches');
       }
       
       const matchesData = await matchesResponse.json();
-      setMatches(matchesData);
+      setMatches(matchesData || []); // Ensure we always set an array
 
       // Fetch messages
       const messagesResponse = await fetch(`http://localhost:8082/tournaments/${tournamentId}/messages`, { 
@@ -156,23 +164,21 @@ export default function TournamentDetailClient({ tournamentId }: TournamentDetai
     }
   };
 
-  const handleJoinTournament = async () => {
+  const handleAddParticipant = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token || !user) {
-        router.push('/auth/login');
+      if (!token || !user?.isAdmin) {
+        setError('Only administrators can add participants');
         return;
       }
 
-      // Check if user is already a participant
-      const isParticipant = participants.some(p => p.userId === user.id);
-      if (isParticipant) {
-        setError('You are already registered for this tournament');
+      if (!newParticipantName.trim()) {
+        setError('Participant name is required');
         return;
       }
 
       // Check if tournament is full
-      if (tournament && participants.length >= tournament.maxParticipants && !tournament.allowWaitlist) {
+      if (tournament && participants.length >= tournament.maxParticipants) {
         setError('Tournament is full');
         return;
       }
@@ -183,26 +189,58 @@ export default function TournamentDetailClient({ tournamentId }: TournamentDetai
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
-          user_id: user.id,
-          name: user.username,
-          seed: 0  // Default seed
+          teamName: newParticipantName
         }),
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to join tournament');
+        throw new Error(data.error || 'Failed to add participant');
       }
 
       const participant = await response.json();
       setParticipants([...participants, participant]);
+      setNewParticipantName(''); // Clear input after successful addition
+      setSuccessMessage('Successfully added participant!');
       
-      // Show success message
-      setSuccessMessage('Successfully joined the tournament!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      // Refresh tournament data to get updated participant count
+      await fetchTournamentData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join tournament');
+      console.error('Error adding participant:', err);
+      setError(err instanceof Error ? err.message : 'Failed to add participant');
+    }
+  };
+
+  const handleGenerateBracket = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/auth/login');
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8082/tournaments/${tournamentId}/bracket`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to generate bracket');
+      }
+
+      // Refresh tournament data to get updated matches
+      await fetchTournamentData();
+      setSuccessMessage('Tournament bracket generated successfully!');
+    } catch (err) {
+      console.error('Error generating bracket:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate bracket');
     }
   };
 
@@ -245,6 +283,43 @@ export default function TournamentDetailClient({ tournamentId }: TournamentDetai
     if (!participantId) return 'TBD';
     const participant = participants.find(p => p.id === participantId);
     return participant ? participant.name : 'TBD';
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'TBD';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/auth/login');
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8082/tournaments/${tournamentId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update tournament status');
+      }
+
+      // Refresh tournament data
+      await fetchTournamentData();
+      setSuccessMessage('Tournament status updated successfully!');
+    } catch (err) {
+      console.error('Error updating tournament status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update tournament status');
+    }
   };
 
   // Score update modal
@@ -342,255 +417,233 @@ export default function TournamentDetailClient({ tournamentId }: TournamentDetai
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {error && (
-        <div className="mb-4 rounded-md bg-red-50 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
+    <div className="container mx-auto px-4 py-8">
+      {isLoading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         </div>
-      )}
-
-      {successMessage && (
-        <div className="mb-4 rounded-md bg-green-50 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-green-700">{successMessage}</p>
-            </div>
-          </div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {error}
         </div>
-      )}
-
-      <div className="md:flex md:items-center md:justify-between md:space-x-4">
+      ) : tournament ? (
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{tournament?.name || 'Tournament Details'}</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {tournament?.game || ''} {tournament?.format ? `• ${tournament.format}` : ''}
-          </p>
-        </div>
-        <div className="mt-4 flex space-x-3 md:mt-0">
-          {tournament?.status === 'REGISTRATION' && (
-            <button
-              onClick={handleJoinTournament}
-              disabled={!user || (participants && tournament && participants.some(p => p.userId === user.id) || participants.length >= tournament.maxParticipants)}
-              className={`
-                inline-flex justify-center rounded-md px-4 py-2 text-sm font-medium shadow-sm
-                ${!user || (participants && tournament && participants.some(p => p.userId === user.id) || participants.length >= tournament.maxParticipants)
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2'
-                }
-              `}
-            >
-              {!user
-                ? 'Please log in to join'
-                : participants && participants.some(p => p.userId === user.id)
-                ? 'Already Registered'
-                : participants && tournament && participants.length >= tournament.maxParticipants
-                ? 'Tournament Full'
-                : 'Join Tournament'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="mt-4 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`${
-              activeTab === 'overview'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-            } whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab('participants')}
-            className={`${
-              activeTab === 'participants'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-            } whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}
-          >
-            Participants
-          </button>
-          {tournament?.status === 'IN_PROGRESS' && (
-            <button
-              onClick={() => setActiveTab('bracket')}
-              className={`${
-                activeTab === 'bracket'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              } whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}
-            >
-              Bracket
-            </button>
-          )}
-        </nav>
-      </div>
-
-      {activeTab === 'overview' && (
-        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:px-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Tournament Details</h3>
-            </div>
-            <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-              <dl className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2">
-                <div className="sm:col-span-1">
-                  <dt className="text-sm font-medium text-gray-500">Status</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{tournament?.status || 'N/A'}</dd>
-                </div>
-                <div className="sm:col-span-1">
-                  <dt className="text-sm font-medium text-gray-500">Participants</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {participants?.length || 0} / {tournament?.maxParticipants || '?'}
-                  </dd>
-                </div>
-                <div className="sm:col-span-1">
-                  <dt className="text-sm font-medium text-gray-500">Start Date</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {tournament?.startDate ? new Date(tournament.startDate).toLocaleString() : 'TBD'}
-                  </dd>
-                </div>
-                <div className="sm:col-span-1">
-                  <dt className="text-sm font-medium text-gray-500">Registration Deadline</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {tournament?.registrationDeadline ? new Date(tournament.registrationDeadline).toLocaleString() : 'TBD'}
-                  </dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-sm font-medium text-gray-500">Description</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{tournament?.description || 'No description available'}</dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-sm font-medium text-gray-500">Rules</dt>
-                  <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{tournament?.rules || 'No rules specified'}</dd>
-                </div>
-              </dl>
+          {/* Tournament Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{tournament.name}</h1>
+            <div className="flex items-center space-x-4">
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                {tournament.status}
+              </span>
+              <span className="text-gray-600">
+                {participants.length} / {tournament.maxParticipants} Participants
+              </span>
             </div>
           </div>
-        </div>
-      )}
 
-      {activeTab === 'participants' && (
-        <div className="mt-8">
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Participants</h3>
-              <span className="text-sm text-gray-500">{participants?.length || 0} / {tournament?.maxParticipants || '?'}</span>
-            </div>
-            {participants && participants.length > 0 ? (
-              <ul role="list" className="divide-y divide-gray-200">
-                {participants.map((participant) => (
-                  <li key={participant.id} className="px-4 py-4 sm:px-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                            <span className="text-sm font-medium text-gray-500">
-                              {participant.name && participant.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{participant.name}</div>
-                          <div className="text-sm text-gray-500">Joined {participant.createdAt ? new Date(participant.createdAt).toLocaleDateString() : 'N/A'}</div>
-                        </div>
-                      </div>
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-4 mb-8">
+            {user?.isAdmin && tournament.status === 'REGISTRATION' && (
+              <div className="flex items-center space-x-2 w-full max-w-md">
+                <input
+                  type="text"
+                  value={newParticipantName}
+                  onChange={(e) => setNewParticipantName(e.target.value)}
+                  placeholder="Enter participant name"
+                  className="flex-1 px-4 py-2 border rounded focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  onClick={handleAddParticipant}
+                  disabled={participants.length >= tournament.maxParticipants}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-gray-400"
+                >
+                  Add Participant
+                </button>
+              </div>
+            )}
+            {user?.isAdmin && tournament.status === 'REGISTRATION' && participants.length >= 2 && (
+              <button
+                onClick={handleGenerateBracket}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Generate Bracket
+              </button>
+            )}
+            {user?.isAdmin && (
+              <select
+                onChange={(e) => handleUpdateStatus(e.target.value)}
+                value={tournament.status}
+                className="px-4 py-2 border rounded"
+              >
+                <option value="DRAFT">Draft</option>
+                <option value="REGISTRATION">Registration</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+            )}
+          </div>
+
+          {/* Tabs */}
+          <div className="border-b border-gray-200 mb-8">
+            <nav className="-mb-px flex space-x-8">
+              {['overview', 'participants', 'bracket', 'chat'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as TabType)}
+                  className={`
+                    py-4 px-1 border-b-2 font-medium text-sm
+                    ${activeTab === tab
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+                  `}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Tab Content */}
+          <div className="mt-6">
+            {activeTab === 'overview' && (
+              <div className="bg-white shadow rounded-lg p-6">
+                <h2 className="text-xl font-semibold mb-4">Tournament Details</h2>
+                <div className="space-y-4">
+                  <p><strong>Game:</strong> {tournament.game}</p>
+                  <p><strong>Format:</strong> {tournament.format}</p>
+                  <p><strong>Start Time:</strong> {formatDate(tournament.startTime)}</p>
+                  <p><strong>Registration Deadline:</strong> {formatDate(tournament.registrationDeadline)}</p>
+                  <p><strong>Description:</strong> {tournament.description}</p>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'participants' && (
+              <div className="bg-white shadow rounded-lg p-6">
+                <h2 className="text-xl font-semibold mb-4">Participants</h2>
+                <div className="grid gap-4">
+                  {participants.map((participant, index) => (
+                    <div key={participant.id} className="flex items-center justify-between border-b pb-2">
                       <div>
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                          ${participant.status === 'CHECKED_IN'
-                            ? 'bg-green-100 text-green-800'
-                            : participant.status === 'WAITLISTED'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : participant.status === 'ELIMINATED'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {participant.status || 'REGISTERED'}
-                        </span>
+                        <span className="font-medium">{participant.teamName || participant.name}</span>
+                        {participant.isWaitlisted && (
+                          <span className="ml-2 text-sm text-yellow-600">(Waitlisted)</span>
+                        )}
+                      </div>
+                      <span className="text-gray-500">Seed: {participant.seed || index + 1}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'bracket' && matches.length > 0 && (
+              <div className="bg-white shadow rounded-lg p-6 overflow-x-auto">
+                <h2 className="text-xl font-semibold mb-4">Tournament Bracket</h2>
+                <TournamentBracket
+                  matches={matches}
+                  participants={participants}
+                  onMatchClick={handleMatchClick}
+                  isAdmin={user?.isAdmin || false}
+                />
+              </div>
+            )}
+
+            {activeTab === 'chat' && (
+              <div className="bg-white shadow rounded-lg p-6">
+                <h2 className="text-xl font-semibold mb-4">Tournament Chat</h2>
+                <div className="h-96 overflow-y-auto mb-4 space-y-4">
+                  {messages.map((message) => (
+                    <div key={message.id} className="flex space-x-3">
+                      <div className="flex-1 bg-gray-50 rounded-lg px-4 py-2">
+                        <div className="font-medium text-gray-900">{message.userName}</div>
+                        <div className="text-gray-700">{message.content}</div>
                       </div>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-center py-12">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No participants yet</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Be the first to join this tournament!
-                </p>
-                {tournament?.status === 'REGISTRATION' && user && (
-                  <div className="mt-6">
-                    <button
-                      onClick={handleJoinTournament}
-                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                      Join Tournament
-                    </button>
-                  </div>
-                )}
+                  ))}
+                </div>
+                <form onSubmit={handleSendMessage} className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  >
+                    Send
+                  </button>
+                </form>
               </div>
             )}
           </div>
         </div>
-      )}
-
-      {activeTab === 'bracket' && (
-        <div className="mt-8">
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:px-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Tournament Bracket</h3>
-              {tournament?.status === 'IN_PROGRESS' && (
-                <p className="mt-1 text-sm text-gray-500">Click on a match to update its score</p>
-              )}
-            </div>
-            <div className="px-4 py-5 sm:p-6">
-              {matches && matches.length > 0 ? (
-                <TournamentBracket
-                  matches={matches}
-                  participants={participants || []}
-                  onMatchClick={handleMatchClick}
-                />
-              ) : (
-                <div className="text-center py-12">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No matches yet</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {tournament?.status === 'DRAFT' || tournament?.status === 'REGISTRATION'
-                      ? 'The bracket will be generated when the tournament starts.'
-                      : 'Waiting for matches to be created.'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+      ) : (
+        <div className="text-center py-12">
+          <p className="text-xl text-gray-600">Tournament not found</p>
         </div>
       )}
 
-      {showScoreModal && (
-        <ScoreModal />
+      {/* Score Update Modal */}
+      {showScoreModal && selectedMatch && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg">
+            <h3 className="text-lg font-medium mb-4">Update Match Score</h3>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.target as HTMLFormElement;
+              const score1 = parseInt(form.score1.value);
+              const score2 = parseInt(form.score2.value);
+              handleScoreSubmit(score1, score2);
+              setShowScoreModal(false);
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    {getParticipantName(selectedMatch.participant1Id)}
+                  </label>
+                  <input
+                    type="number"
+                    name="score1"
+                    min="0"
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    {getParticipantName(selectedMatch.participant2Id)}
+                  </label>
+                  <input
+                    type="number"
+                    name="score2"
+                    min="0"
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowScoreModal(false)}
+                    className="px-4 py-2 border rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                  >
+                    Update Score
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
