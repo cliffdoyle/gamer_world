@@ -42,17 +42,15 @@ func (r *participantRepository) Create(ctx context.Context, participant *domain.
 	// Execute SQL insert
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO tournament_participants (
-			id, tournament_id, user_id, name, seed, status, is_waitlisted,
+			id, tournament_id, user_id, team_name, seed,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`,
 		participant.ID,
 		participant.TournamentID,
 		participant.UserID,
-		participant.Name,
+		participant.ParticipantName,
 		participant.Seed,
-		participant.Status,
-		participant.IsWaitlisted,
 		participant.CreatedAt,
 		participant.UpdatedAt,
 	)
@@ -66,7 +64,7 @@ func (r *participantRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 
 	err := r.db.QueryRowContext(ctx, `
 		SELECT 
-			id, tournament_id, user_id, name, seed, status, is_waitlisted,
+			id, tournament_id, user_id, team_name, seed,
 			created_at, updated_at
 		FROM tournament_participants
 		WHERE id = $1
@@ -74,10 +72,8 @@ func (r *participantRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 		&participant.ID,
 		&participant.TournamentID,
 		&participant.UserID,
-		&participant.Name,
+		&participant.ParticipantName,
 		&participant.Seed,
-		&participant.Status,
-		&participant.IsWaitlisted,
 		&participant.CreatedAt,
 		&participant.UpdatedAt,
 	)
@@ -97,7 +93,7 @@ func (r *participantRepository) GetByTournamentAndUser(ctx context.Context, tour
 	var participant domain.Participant
 	err := r.db.QueryRowContext(ctx, `
 		SELECT 
-			id, tournament_id, user_id, name, seed, status, is_waitlisted,
+			id, tournament_id, user_id, team_name, seed,
 			created_at, updated_at
 		FROM tournament_participants
 		WHERE tournament_id = $1 AND user_id = $2
@@ -105,10 +101,8 @@ func (r *participantRepository) GetByTournamentAndUser(ctx context.Context, tour
 		&participant.ID,
 		&participant.TournamentID,
 		&participant.UserID,
-		&participant.Name,
+		&participant.ParticipantName,
 		&participant.Seed,
-		&participant.Status,
-		&participant.IsWaitlisted,
 		&participant.CreatedAt,
 		&participant.UpdatedAt,
 	)
@@ -127,7 +121,7 @@ func (r *participantRepository) GetByTournamentAndUser(ctx context.Context, tour
 func (r *participantRepository) ListByTournament(ctx context.Context, tournamentID uuid.UUID) ([]*domain.Participant, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT 
-			id, tournament_id, user_id, name, seed, status, is_waitlisted,
+			id, tournament_id, user_id, team_name, seed,
 			created_at, updated_at
 		FROM tournament_participants
 		WHERE tournament_id = $1
@@ -147,10 +141,8 @@ func (r *participantRepository) ListByTournament(ctx context.Context, tournament
 			&participant.ID,
 			&participant.TournamentID,
 			&participant.UserID,
-			&participant.Name,
+			&participant.ParticipantName,
 			&participant.Seed,
-			&participant.Status,
-			&participant.IsWaitlisted,
 			&participant.CreatedAt,
 			&participant.UpdatedAt,
 		)
@@ -174,19 +166,15 @@ func (r *participantRepository) Update(ctx context.Context, participant *domain.
 		UPDATE tournament_participants SET
 			tournament_id = $1,
 			user_id = $2,
-			name = $3,
+			team_name = $3,
 			seed = $4,
-			status = $5,
-			is_waitlisted = $6,
-			updated_at = $7
-		WHERE id = $8
+			updated_at = $5
+		WHERE id = $6
 	`,
 		participant.TournamentID,
 		participant.UserID,
-		participant.Name,
+		participant.ParticipantName,
 		participant.Seed,
-		participant.Status,
-		participant.IsWaitlisted,
 		participant.UpdatedAt,
 		participant.ID,
 	)

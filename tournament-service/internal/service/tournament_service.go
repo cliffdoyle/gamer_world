@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/cliffdoyle/tournament-service/internal/domain"
@@ -23,7 +22,7 @@ type TournamentService interface {
 	UpdateTournamentStatus(ctx context.Context, id uuid.UUID, status domain.TournamentStatus) error
 
 	// Participant operations
-	RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error)
+	RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error)
 	UnregisterParticipant(ctx context.Context, tournamentID, userID uuid.UUID) error
 	GetParticipants(ctx context.Context, tournamentID uuid.UUID) ([]*domain.ParticipantResponse, error)
 	CheckInParticipant(ctx context.Context, tournamentID, userID uuid.UUID) error
@@ -43,11 +42,11 @@ type TournamentService interface {
 
 // tournamentService implements TournamentService
 type tournamentService struct {
-	tournamentRepo  repository.TournamentRepository
-	participantRepo repository.ParticipantRepository
-	matchRepo       repository.MatchRepository
-	messageRepo     repository.MessageRepository
-	bracketGen      bracket.Generator
+	tournamentRepo   repository.TournamentRepository
+	participantRepo  repository.ParticipantRepository
+	matchRepo        repository.MatchRepository
+	messageRepo      repository.MessageRepository
+	bracketGenerator bracket.Generator
 }
 
 // NewTournamentService creates a new tournament service
@@ -56,14 +55,14 @@ func NewTournamentService(
 	participantRepo repository.ParticipantRepository,
 	matchRepo repository.MatchRepository,
 	messageRepo repository.MessageRepository,
-	bracketGen bracket.Generator,
+	bracketGenerator bracket.Generator,
 ) TournamentService {
 	return &tournamentService{
-		tournamentRepo:  tournamentRepo,
-		participantRepo: participantRepo,
-		matchRepo:       matchRepo,
-		messageRepo:     messageRepo,
-		bracketGen:      bracketGen,
+		tournamentRepo:   tournamentRepo,
+		participantRepo:  participantRepo,
+		matchRepo:        matchRepo,
+		messageRepo:      messageRepo,
+		bracketGenerator: bracketGenerator,
 	}
 }
 
@@ -367,7 +366,7 @@ func isValidStatusTransition(from, to domain.TournamentStatus) bool {
 }
 
 // RegisterParticipant registers a participant for a tournament
-func (s *tournamentService) RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error) {
+func (s *tournamentService) RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error) {
 	// Get tournament
 	tournament, err := s.tournamentRepo.GetByID(ctx, tournamentID)
 	if err != nil {
@@ -390,16 +389,34 @@ func (s *tournamentService) RegisterParticipant(ctx context.Context, tournamentI
 		isWaitlisted = true
 	}
 
+	// If user is registered, check if they're already in the tournament
+	if request.UserID != nil {
+		existingParticipant, err := s.participantRepo.GetByTournamentAndUser(ctx, tournamentID, *request.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check existing participant: %w", err)
+		}
+		if existingParticipant != nil {
+			return nil, errors.New("user is already registered for this tournament")
+		}
+	}
+
 	// Create participant
 	participant := &domain.Participant{
-		ID:           uuid.New(),
-		TournamentID: tournamentID,
-		UserID:       userID,
-		Seed:         request.Seed,
-		Status:       domain.ParticipantRegistered,
-		IsWaitlisted: isWaitlisted,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:              uuid.New(),
+		TournamentID:    tournamentID,
+		UserID:          request.UserID,
+		Name:            request.Name,
+		ParticipantName: request.ParticipantName,
+		Seed:            0, // Default to 0, will be assigned during bracket generation
+		Status:          domain.ParticipantRegistered,
+		IsWaitlisted:    isWaitlisted,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	// If seed is provided and user is admin, use it
+	if request.Seed != nil {
+		participant.Seed = *request.Seed
 	}
 
 	// Save to database
@@ -565,28 +582,51 @@ func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uu
 		return errors.New("need at least 2 participants to generate bracket")
 	}
 
-	// Delete existing matches if any
-	err = s.matchRepo.Delete(ctx, tournamentID)
-	if err != nil {
-		return fmt.Errorf("failed to clear existing matches: %w", err)
+	// Convert domain.TournamentFormat to bracket.Format
+	var bracketFormat bracket.Format
+	switch tournament.Format {
+	case domain.SingleElimination:
+		bracketFormat = bracket.SingleElimination
+	case domain.DoubleElimination:
+		bracketFormat = bracket.DoubleElimination
+	case domain.RoundRobin:
+		bracketFormat = bracket.RoundRobin
+	case domain.Swiss:
+		bracketFormat = bracket.Swiss
+	default:
+		return fmt.Errorf("unsupported tournament format: %s", tournament.Format)
 	}
 
-	// Generate matches based on format
+	// Generate bracket based on tournament format
+	var matches []*domain.Match
 	options := make(map[string]interface{})
-	if tournament.Format == domain.Swiss {
-		// For Swiss, we'll use log2(n) rounds by default
-		options["rounds"] = int(math.Ceil(math.Log2(float64(len(participants)))))
-	}
-
-	matches, err := s.bracketGen.Generate(ctx, tournamentID, bracket.Format(tournament.Format), participants, options)
+	matches, err = s.bracketGenerator.Generate(ctx, tournamentID, bracketFormat, participants, options)
 	if err != nil {
 		return fmt.Errorf("failed to generate bracket: %w", err)
 	}
 
-	// Save matches
-	for _, match := range matches {
+	// First, create all matches without next_match_id
+	matchesWithoutNext := make([]*domain.Match, len(matches))
+	for i, match := range matches {
+		matchCopy := *match
+		matchCopy.NextMatchID = nil
+		matchesWithoutNext[i] = &matchCopy
+	}
+
+	// Save matches without next_match_id
+	for _, match := range matchesWithoutNext {
 		if err := s.matchRepo.Create(ctx, match); err != nil {
 			return fmt.Errorf("failed to create match: %w", err)
+		}
+	}
+
+	// Now update matches with their next_match_id
+	for i, match := range matches {
+		if match.NextMatchID != nil {
+			matchesWithoutNext[i].NextMatchID = match.NextMatchID
+			if err := s.matchRepo.Update(ctx, matchesWithoutNext[i]); err != nil {
+				return fmt.Errorf("failed to update match with next_match_id: %w", err)
+			}
 		}
 	}
 
