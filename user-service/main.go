@@ -7,6 +7,7 @@ import (
 	"github.com/cliffdoyle/gamer_world/user-service/database"
 	"github.com/cliffdoyle/gamer_world/user-service/handlers"
 	"github.com/cliffdoyle/gamer_world/user-service/middleware"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
@@ -18,6 +19,14 @@ func main() {
 	}
 	database.Connect()
 	r := gin.Default()
+
+	// Add CORS middleware
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"http://localhost:3000"}
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	r.Use(cors.New(config))
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "User service is Up!"})
 	})

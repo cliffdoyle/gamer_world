@@ -22,6 +22,7 @@ type Participant struct {
 	ID           uuid.UUID         `json:"id"`
 	TournamentID uuid.UUID         `json:"tournament_id"`
 	UserID       uuid.UUID         `json:"user_id"`
+	Name         string            `json:"name"`
 	Seed         int               `json:"seed"`
 	Status       ParticipantStatus `json:"status"`
 	IsWaitlisted bool              `json:"is_waitlisted"`
@@ -32,6 +33,7 @@ type Participant struct {
 // ParticipantRequest represents the data needed to register a participant
 type ParticipantRequest struct {
 	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Name   string    `json:"name" binding:"required"`
 	Seed   int       `json:"seed"`
 }
 
@@ -40,6 +42,7 @@ type ParticipantResponse struct {
 	ID           uuid.UUID         `json:"id"`
 	TournamentID uuid.UUID         `json:"tournament_id"`
 	UserID       uuid.UUID         `json:"user_id"`
+	Name         string            `json:"name"`
 	Seed         int               `json:"seed"`
 	Status       ParticipantStatus `json:"status"`
 	IsWaitlisted bool              `json:"is_waitlisted"`

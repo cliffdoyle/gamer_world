@@ -67,6 +67,15 @@ func NewTournamentService(
 	}
 }
 
+// ErrTournamentNotFound is returned when a tournament cannot be found
+type ErrTournamentNotFound struct {
+	ID uuid.UUID
+}
+
+func (e *ErrTournamentNotFound) Error() string {
+	return fmt.Sprintf("tournament not found: %v", e.ID)
+}
+
 // CreateTournament creates a new tournament
 func (s *tournamentService) CreateTournament(ctx context.Context, request *domain.CreateTournamentRequest, creatorID uuid.UUID) (*domain.Tournament, error) {
 	// Validate format
@@ -104,6 +113,9 @@ func (s *tournamentService) CreateTournament(ctx context.Context, request *domai
 func (s *tournamentService) GetTournament(ctx context.Context, id uuid.UUID) (*domain.TournamentResponse, error) {
 	tournament, err := s.tournamentRepo.GetByID(ctx, id)
 	if err != nil {
+		if err.Error() == fmt.Sprintf("tournament not found: %v", id) {
+			return nil, &ErrTournamentNotFound{ID: id}
+		}
 		return nil, fmt.Errorf("failed to get tournament: %w", err)
 	}
 
@@ -442,6 +454,7 @@ func (s *tournamentService) GetParticipants(ctx context.Context, tournamentID uu
 			ID:           participant.ID,
 			TournamentID: participant.TournamentID,
 			UserID:       participant.UserID,
+			Name:         participant.Name,
 			Seed:         participant.Seed,
 			Status:       participant.Status,
 			IsWaitlisted: participant.IsWaitlisted,

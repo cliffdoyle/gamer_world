@@ -58,8 +58,11 @@ func main() {
 	// Add CORS middleware
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{"http://localhost:3000"}
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
+	config.AllowCredentials = true
+	config.ExposeHeaders = []string{"Content-Length"}
+	config.MaxAge = 86400 // 24 hours
 	router.Use(cors.New(config))
 
 	// Initialize services
@@ -110,7 +113,12 @@ func main() {
 
 		tournament, err := tournamentService.GetTournament(c.Request.Context(), id)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"})
+			// Check if it's a not found error
+			if _, ok := err.(*service.ErrTournamentNotFound); ok {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -125,17 +133,140 @@ func main() {
 			return
 		}
 
-		participants, err := tournamentService.GetParticipants(c.Request.Context(), id)
+		// First check if tournament exists
+		_, err = tournamentService.GetTournament(c.Request.Context(), id)
 		if err != nil {
 			if _, ok := err.(*service.ErrTournamentNotFound); ok {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"})
+				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
+		// Get participants
+		participants, err := tournamentService.GetParticipants(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Even if there are no participants, return an empty array instead of null
+		if participants == nil {
+			participants = []*domain.ParticipantResponse{}
+		}
+
 		c.JSON(http.StatusOK, participants)
+	})
+
+	// Add matches endpoint
+	router.GET("/tournaments/:id/matches", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
+			return
+		}
+
+		matches, err := tournamentService.GetMatches(c.Request.Context(), id)
+		if err != nil {
+			if _, ok := err.(*service.ErrTournamentNotFound); ok {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Even if there are no matches, return an empty array instead of null
+		if matches == nil {
+			matches = []*domain.MatchResponse{}
+		}
+
+		c.JSON(http.StatusOK, matches)
+	})
+
+	// Add bracket generation endpoint
+	router.POST("/tournaments/:id/bracket", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
+			return
+		}
+
+		err = tournamentService.GenerateBracket(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.Status(http.StatusCreated)
+	})
+
+	// Add match score update endpoint
+	router.PUT("/tournaments/:id/matches/:matchId", func(c *gin.Context) {
+		_, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
+			return
+		}
+
+		matchID, err := uuid.Parse(c.Param("matchId"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid match ID"})
+			return
+		}
+
+		var req domain.ScoreUpdateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		// Get user info from token
+		token := c.GetHeader("Authorization")[7:] // Remove "Bearer " prefix
+		user, err := userService.ValidateToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user token"})
+			return
+		}
+
+		userID := user.GetUserUUID()
+
+		err = tournamentService.UpdateMatchScore(c.Request.Context(), matchID, userID, &req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.Status(http.StatusOK)
+	})
+
+	// Add messages endpoint
+	router.GET("/tournaments/:id/messages", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
+			return
+		}
+
+		limit := 50
+		offset := 0
+		messages, err := tournamentService.GetMessages(c.Request.Context(), id, limit, offset)
+		if err != nil {
+			if _, ok := err.(*service.ErrTournamentNotFound); ok {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Even if there are no messages, return an empty array instead of null
+		if messages == nil {
+			messages = []*domain.MessageResponse{}
+		}
+
+		c.JSON(http.StatusOK, messages)
 	})
 
 	// Protected routes

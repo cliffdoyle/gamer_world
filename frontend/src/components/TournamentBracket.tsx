@@ -1,33 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-
-interface Match {
-  id: string;
-  tournamentId: string;
-  round: number;
-  participant1Id: string;
-  participant2Id: string;
-  winnerId?: string;
-  status: string;
-  score?: {
-    participant1: number;
-    participant2: number;
-  };
-  createdAt: string;
-}
-
-interface Participant {
-  id: string;
-  userId: string;
-  status: string;
-}
-
-interface TournamentBracketProps {
-  matches: Match[];
-  participants: Participant[];
-  onMatchClick?: (match: Match) => void;
-  isLoading?: boolean;
-  error?: string;
-}
+import React, { useMemo, useState, useEffect } from 'react';
+import { Match, Participant } from '../types/tournament';
 
 interface ScoreDisplayProps {
   score: number;
@@ -75,7 +47,7 @@ interface ParticipantNameProps {
 
 function ParticipantName({ participantId, isWinner, participants }: ParticipantNameProps) {
   const participant = participants.find(p => p.id === participantId);
-  const displayName = participant ? participant.userId : 'TBD';
+  const displayName = participant ? participant.name : 'TBD';
   
   return (
     <div className="flex items-center">
@@ -134,7 +106,16 @@ function BracketLine({ roundIndex, matchIndex, totalRounds, isWinnerPath }: Brac
   );
 }
 
-export default function TournamentBracket({ matches, participants, onMatchClick, isLoading = false, error }: TournamentBracketProps) {
+interface TournamentBracketProps {
+  matches: Match[];
+  participants: Participant[];
+  onMatchClick?: (match: Match) => void;
+  onParticipantClick?: (participant: Participant) => void;
+  isLoading?: boolean;
+  error?: string;
+}
+
+export default function TournamentBracket({ matches, participants, onMatchClick, onParticipantClick, isLoading = false, error }: TournamentBracketProps) {
   const [hoveredMatchId, setHoveredMatchId] = useState<string | null>(null);
   const [animatingMatches, setAnimatingMatches] = useState<Set<string>>(new Set());
   const [prevMatches, setPrevMatches] = useState(matches);
@@ -195,20 +176,16 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
   };
 
   const isValidScore = (match: Match): boolean => {
-    if (!match.score) return false;
-    
-    const { participant1, participant2 } = match.score;
-    
     // Scores must be non-negative
-    if (participant1 < 0 || participant2 < 0) return false;
+    if (match.scoreParticipant1 < 0 || match.scoreParticipant2 < 0) return false;
     
     // At least one participant must have a score
-    if (participant1 === 0 && participant2 === 0) return false;
+    if (match.scoreParticipant1 === 0 && match.scoreParticipant2 === 0) return false;
     
     // Winner must have higher score
     if (match.winnerId) {
-      if (match.winnerId === match.participant1Id && participant1 <= participant2) return false;
-      if (match.winnerId === match.participant2Id && participant2 <= participant1) return false;
+      if (match.winnerId === match.participant1Id && match.scoreParticipant1 <= match.scoreParticipant2) return false;
+      if (match.winnerId === match.participant2Id && match.scoreParticipant2 <= match.scoreParticipant1) return false;
     }
     
     return true;
@@ -307,7 +284,7 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                   onMouseLeave={() => setHoveredMatchId(null)}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Match between ${getParticipantName(match.participant1Id)} and ${getParticipantName(match.participant2Id)}`}
+                  aria-label={`Match between ${getParticipantName(match.participant1Id)} and ${match.participant2Id ? getParticipantName(match.participant2Id) : 'TBD'}`}
                 >
                   {hoveredMatchId === match.id && (
                     <MatchTooltip match={match} getParticipantName={getParticipantName} />
@@ -336,9 +313,9 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                               isWinner={match.winnerId === match.participant1Id}
                               participants={participants}
                             />
-                            {match.score && isValidScore(match) && (
+                            {isValidScore(match) && (
                               <ScoreDisplay
-                                score={match.score.participant1}
+                                score={match.scoreParticipant1}
                                 isWinner={match.winnerId === match.participant1Id}
                               />
                             )}
@@ -351,13 +328,13 @@ export default function TournamentBracket({ matches, participants, onMatchClick,
                             `}
                           >
                             <ParticipantName
-                              participantId={match.participant2Id}
+                              participantId={match.participant2Id || ''}
                               isWinner={match.winnerId === match.participant2Id}
                               participants={participants}
                             />
-                            {match.score && isValidScore(match) && (
+                            {isValidScore(match) && (
                               <ScoreDisplay
-                                score={match.score.participant2}
+                                score={match.scoreParticipant2}
                                 isWinner={match.winnerId === match.participant2Id}
                               />
                             )}

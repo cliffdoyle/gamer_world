@@ -42,17 +42,19 @@ func (r *participantRepository) Create(ctx context.Context, participant *domain.
 	// Execute SQL insert
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO tournament_participants (
-			id, tournament_id, user_id, team_name, seed, is_checked_in,
-			created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			id, tournament_id, user_id, name, seed, status, is_waitlisted,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`,
 		participant.ID,
 		participant.TournamentID,
 		participant.UserID,
-		"", // team_name (not in domain model)
+		participant.Name,
 		participant.Seed,
-		false, // is_checked_in (default)
+		participant.Status,
+		participant.IsWaitlisted,
 		participant.CreatedAt,
+		participant.UpdatedAt,
 	)
 
 	return err
@@ -61,23 +63,23 @@ func (r *participantRepository) Create(ctx context.Context, participant *domain.
 // GetByID retrieves a participant by ID
 func (r *participantRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Participant, error) {
 	var participant domain.Participant
-	var teamName string
-	var isCheckedIn bool
 
 	err := r.db.QueryRowContext(ctx, `
 		SELECT 
-			id, tournament_id, user_id, team_name, seed, is_checked_in,
-			created_at
+			id, tournament_id, user_id, name, seed, status, is_waitlisted,
+			created_at, updated_at
 		FROM tournament_participants
 		WHERE id = $1
 	`, id).Scan(
 		&participant.ID,
 		&participant.TournamentID,
 		&participant.UserID,
-		&teamName,
+		&participant.Name,
 		&participant.Seed,
-		&isCheckedIn,
+		&participant.Status,
+		&participant.IsWaitlisted,
 		&participant.CreatedAt,
+		&participant.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -87,11 +89,6 @@ func (r *participantRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 		return nil, err
 	}
 
-	// Set default values for fields not in the database
-	participant.Status = domain.ParticipantRegistered
-	participant.IsWaitlisted = false
-	participant.UpdatedAt = participant.CreatedAt
-
 	return &participant, nil
 }
 
@@ -100,7 +97,7 @@ func (r *participantRepository) GetByTournamentAndUser(ctx context.Context, tour
 	var participant domain.Participant
 	err := r.db.QueryRowContext(ctx, `
 		SELECT 
-			id, tournament_id, user_id, seed, status, is_waitlisted,
+			id, tournament_id, user_id, name, seed, status, is_waitlisted,
 			created_at, updated_at
 		FROM tournament_participants
 		WHERE tournament_id = $1 AND user_id = $2
@@ -108,6 +105,7 @@ func (r *participantRepository) GetByTournamentAndUser(ctx context.Context, tour
 		&participant.ID,
 		&participant.TournamentID,
 		&participant.UserID,
+		&participant.Name,
 		&participant.Seed,
 		&participant.Status,
 		&participant.IsWaitlisted,
@@ -129,8 +127,8 @@ func (r *participantRepository) GetByTournamentAndUser(ctx context.Context, tour
 func (r *participantRepository) ListByTournament(ctx context.Context, tournamentID uuid.UUID) ([]*domain.Participant, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT 
-			id, tournament_id, user_id, team_name, seed, is_checked_in,
-			created_at
+			id, tournament_id, user_id, name, seed, status, is_waitlisted,
+			created_at, updated_at
 		FROM tournament_participants
 		WHERE tournament_id = $1
 		ORDER BY seed, created_at
@@ -144,26 +142,21 @@ func (r *participantRepository) ListByTournament(ctx context.Context, tournament
 	var participants []*domain.Participant
 	for rows.Next() {
 		var participant domain.Participant
-		var teamName string
-		var isCheckedIn bool
 
 		err := rows.Scan(
 			&participant.ID,
 			&participant.TournamentID,
 			&participant.UserID,
-			&teamName,
+			&participant.Name,
 			&participant.Seed,
-			&isCheckedIn,
+			&participant.Status,
+			&participant.IsWaitlisted,
 			&participant.CreatedAt,
+			&participant.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
-
-		// Set default values for fields not in the database
-		participant.Status = domain.ParticipantRegistered
-		participant.IsWaitlisted = false
-		participant.UpdatedAt = participant.CreatedAt
 
 		participants = append(participants, &participant)
 	}
@@ -181,16 +174,20 @@ func (r *participantRepository) Update(ctx context.Context, participant *domain.
 		UPDATE tournament_participants SET
 			tournament_id = $1,
 			user_id = $2,
-			team_name = $3,
+			name = $3,
 			seed = $4,
-			is_checked_in = $5
-		WHERE id = $6
+			status = $5,
+			is_waitlisted = $6,
+			updated_at = $7
+		WHERE id = $8
 	`,
 		participant.TournamentID,
 		participant.UserID,
-		"", // team_name (not in domain model)
+		participant.Name,
 		participant.Seed,
-		participant.Status == domain.ParticipantCheckedIn,
+		participant.Status,
+		participant.IsWaitlisted,
+		participant.UpdatedAt,
 		participant.ID,
 	)
 
