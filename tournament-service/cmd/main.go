@@ -104,8 +104,8 @@ func main() {
 		})
 	})
 
-	router.GET("/tournaments/:id", func(c *gin.Context) {
-		id, err := uuid.Parse(c.Param("id"))
+	router.GET("/tournaments/:tournamentId", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
@@ -126,8 +126,8 @@ func main() {
 	})
 
 	// Add participants route
-	router.GET("/tournaments/:id/participants", func(c *gin.Context) {
-		id, err := uuid.Parse(c.Param("id"))
+	router.GET("/tournaments/:tournamentId/participants", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
@@ -160,8 +160,8 @@ func main() {
 	})
 
 	// Add participant registration endpoint
-	router.POST("/tournaments/:id/participants", func(c *gin.Context) {
-		tournamentID, err := uuid.Parse(c.Param("id"))
+	router.POST("/tournaments/:tournamentId/participants", func(c *gin.Context) {
+		tournamentID, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
@@ -190,7 +190,6 @@ func main() {
 			if err == nil {
 				userID := user.GetUserUUID()
 				participantReq.UserID = &userID
-				participantReq.Name = user.Username
 			}
 		}
 
@@ -203,8 +202,8 @@ func main() {
 	})
 
 	// Add matches endpoint
-	router.GET("/tournaments/:id/matches", func(c *gin.Context) {
-		id, err := uuid.Parse(c.Param("id"))
+	router.GET("/tournaments/:tournamentId/matches", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
@@ -228,9 +227,44 @@ func main() {
 		c.JSON(http.StatusOK, matches)
 	})
 
+	// Add participant update endpoint
+	router.PUT("/tournaments/:tournamentId/participants/:participantId", func(c *gin.Context) {
+		tournamentID, err := uuid.Parse(c.Param("tournamentId"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
+			return
+		}
+
+		participantID, err := uuid.Parse(c.Param("participantId"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid participant ID"})
+			return
+		}
+
+		var req struct {
+			ParticipantName string `json:"participant_name" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Create update request
+		updateReq := &domain.ParticipantRequest{
+			ParticipantName: req.ParticipantName,
+		}
+
+		participant, err := tournamentService.UpdateParticipant(c.Request.Context(), tournamentID, participantID, updateReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, participant)
+	})
+
 	// Add messages endpoint
-	router.GET("/tournaments/:id/messages", func(c *gin.Context) {
-		id, err := uuid.Parse(c.Param("id"))
+	router.GET("/tournaments/:tournamentId/messages", func(c *gin.Context) {
+		id, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
@@ -286,8 +320,8 @@ func main() {
 			c.JSON(http.StatusCreated, tournament)
 		})
 
-		protected.PUT("/tournaments/:id", func(c *gin.Context) {
-			id, err := uuid.Parse(c.Param("id"))
+		protected.PUT("/tournaments/:tournamentId", func(c *gin.Context) {
+			id, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
@@ -307,8 +341,8 @@ func main() {
 			c.JSON(http.StatusOK, tournament)
 		})
 
-		protected.DELETE("/tournaments/:id", func(c *gin.Context) {
-			id, err := uuid.Parse(c.Param("id"))
+		protected.DELETE("/tournaments/:tournamentId", func(c *gin.Context) {
+			id, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
@@ -322,8 +356,8 @@ func main() {
 		})
 
 		// Tournament status management
-		protected.PUT("/tournaments/:id/status", func(c *gin.Context) {
-			id, err := uuid.Parse(c.Param("id"))
+		protected.PUT("/tournaments/:tournamentId/status", func(c *gin.Context) {
+			id, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
@@ -351,8 +385,8 @@ func main() {
 		})
 
 		// Add bracket generation endpoint
-		protected.POST("/tournaments/:id/bracket", func(c *gin.Context) {
-			id, err := uuid.Parse(c.Param("id"))
+		protected.POST("/tournaments/:tournamentId/bracket", func(c *gin.Context) {
+			id, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
@@ -368,8 +402,8 @@ func main() {
 		})
 
 		// Add match score update endpoint
-		protected.PUT("/tournaments/:id/matches/:matchId", func(c *gin.Context) {
-			_, err := uuid.Parse(c.Param("id"))
+		protected.PUT("/tournaments/:tournamentId/matches/:matchId", func(c *gin.Context) {
+			tournamentID, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
@@ -397,18 +431,35 @@ func main() {
 
 			userID := user.GetUserUUID()
 
-			err = tournamentService.UpdateMatchScore(c.Request.Context(), matchID, userID, &req)
+			// Pass tournamentID to validate the match belongs to the correct tournament
+			err = tournamentService.UpdateMatchScore(c.Request.Context(), tournamentID, matchID, userID, &req)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
 
-			c.Status(http.StatusOK)
+			// Get updated match data
+			matches, err := tournamentService.GetMatches(c.Request.Context(), tournamentID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get updated match data"})
+				return
+			}
+
+			// Find the updated match
+			var updatedMatch *domain.MatchResponse
+			for _, m := range matches {
+				if m.ID == matchID {
+					updatedMatch = m
+					break
+				}
+			}
+
+			c.JSON(http.StatusOK, updatedMatch)
 		})
 
 		// Message management
-		protected.POST("/tournaments/:id/messages", func(c *gin.Context) {
-			tournamentID, err := uuid.Parse(c.Param("id"))
+		protected.POST("/tournaments/:tournamentId/messages", func(c *gin.Context) {
+			tournamentID, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return

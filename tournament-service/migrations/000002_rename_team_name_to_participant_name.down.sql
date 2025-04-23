@@ -1,0 +1,1 @@
+ALTER TABLE tournament_participants RENAME COLUMN participant_name TO team_name; 

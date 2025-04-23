@@ -22,7 +22,6 @@ type Participant struct {
 	ID              uuid.UUID         `json:"id"`
 	TournamentID    uuid.UUID         `json:"tournament_id"`
 	UserID          *uuid.UUID        `json:"user_id,omitempty"`
-	Name            string            `json:"name"`
 	ParticipantName string            `json:"participant_name"`
 	Seed            int               `json:"seed"`
 	Status          ParticipantStatus `json:"status"`
@@ -34,7 +33,6 @@ type Participant struct {
 // ParticipantRequest represents the data needed to register a participant
 type ParticipantRequest struct {
 	UserID          *uuid.UUID `json:"user_id,omitempty"`
-	Name            string     `json:"name,omitempty"`
 	ParticipantName string     `json:"participant_name" binding:"required"`
 	Seed            *int       `json:"seed,omitempty"`
 }
@@ -44,7 +42,6 @@ type ParticipantResponse struct {
 	ID              uuid.UUID         `json:"id"`
 	TournamentID    uuid.UUID         `json:"tournament_id"`
 	UserID          *uuid.UUID        `json:"user_id,omitempty"`
-	Name            string            `json:"name,omitempty"`
 	ParticipantName string            `json:"participant_name"`
 	Seed            int               `json:"seed"`
 	Status          ParticipantStatus `json:"status"`
