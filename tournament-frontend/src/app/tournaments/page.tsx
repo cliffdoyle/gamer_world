@@ -7,6 +7,13 @@ import { tournamentApi } from '@/lib/api/tournament';
 import { Tournament } from '@/types/tournament';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
+interface TournamentResponse {
+  page: number;
+  page_size: number;
+  total: number;
+  tournaments: Tournament[];
+}
+
 export default function TournamentsPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -19,13 +26,25 @@ export default function TournamentsPage() {
   }, [token]);
 
   const fetchTournaments = async () => {
-    if (!token) return;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     
     try {
-      const data = await tournamentApi.getAllTournaments(token);
-      setTournaments(data);
+      const response = await tournamentApi.getAllTournaments(token);
+      // Check if response has the expected structure
+      if (response && typeof response === 'object' && Array.isArray(response.tournaments)) {
+        setTournaments(response.tournaments);
+      } else {
+        console.error('Invalid tournaments response:', response);
+        setError('Received invalid data format from server');
+        setTournaments([]);
+      }
     } catch (err) {
+      console.error('Tournament fetch error:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch tournaments');
+      setTournaments([]);
     } finally {
       setIsLoading(false);
     }

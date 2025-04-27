@@ -7,6 +7,7 @@ export const API_CONFIG = {
     TOURNAMENTS: '/tournaments',
     PARTICIPANTS: (tournamentId: string) => `/tournaments/${tournamentId}/participants`,
     TOURNAMENT_DETAIL: (id: string) => `/tournaments/${id}`,
+    MATCHES: (tournamentId: string) => `/tournaments/${tournamentId}/matches`,
     GENERATE_BRACKET: (id: string) => `/tournaments/${id}/bracket`,
     UPDATE_MATCH: (tournamentId: string, matchId: string) => `/tournaments/${tournamentId}/matches/${matchId}`,
   },
