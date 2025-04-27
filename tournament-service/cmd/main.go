@@ -392,13 +392,41 @@ func main() {
 				return
 			}
 
+			// Clear any existing matches first
+			log.Printf("Clearing existing matches for tournament %s", id)
+			err = tournamentService.DeleteMatches(c.Request.Context(), id)
+			if err != nil {
+				log.Printf("Error clearing matches: %v", err)
+				// Continue anyway, the tournament might not have any matches yet
+			}
+
+			// Generate bracket
+			log.Printf("Generating bracket for tournament %s", id)
 			err = tournamentService.GenerateBracket(c.Request.Context(), id)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				log.Printf("Error generating bracket: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate bracket: %v", err)})
 				return
 			}
 
-			c.Status(http.StatusCreated)
+			// Always update tournament status to IN_PROGRESS
+			log.Printf("Updating tournament %s status to IN_PROGRESS", id)
+			err = tournamentService.UpdateTournamentStatus(c.Request.Context(), id, domain.InProgress)
+			if err != nil {
+				log.Printf("Warning: Failed to update tournament status: %v", err)
+				// Continue anyway, don't fail the request
+			}
+
+			// Fetch and return the generated matches
+			log.Printf("Fetching matches for tournament %s", id)
+			matches, err := tournamentService.GetMatches(c.Request.Context(), id)
+			if err != nil {
+				log.Printf("Error fetching matches: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch generated matches: %v", err)})
+				return
+			}
+
+			c.JSON(http.StatusCreated, matches)
 		})
 
 		// Add match score update endpoint

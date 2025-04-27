@@ -35,25 +35,29 @@ export interface CreateTournamentRequest {
 
 export interface Participant {
   id: string;
-  tournamentId: string;
-  name: string;
-  userId: string;
+  tournament_id: string;
+  user_id?: string;
+  name?: string;
+  participant_name: string;
   seed?: number;
-  createdAt: string;
-  updatedAt: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Match {
   id: string;
-  tournamentId: string;
+  tournament_id: string;
   round: number;
-  participant1Id: string | null;
-  participant2Id: string | null;
-  winnerId: string | null;
-  loserId: string | null;
-  score: string | null;
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
-  nextMatchId: string | null;
-  createdAt: string;
-  updatedAt: string;
+  match_number: number;
+  participant1_id: string | null;
+  participant2_id: string | null;
+  score_participant1: number | null;
+  score_participant2: number | null;
+  winner_id: string | null;
+  next_match_id: string | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+  bracket?: 'WINNERS' | 'LOSERS' | null;
 } 

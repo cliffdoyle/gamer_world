@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/cliffdoyle/tournament-service/internal/domain"
@@ -35,6 +36,7 @@ type TournamentService interface {
 	GetMatchesByRound(ctx context.Context, tournamentID uuid.UUID, round int) ([]*domain.MatchResponse, error)
 	GetMatchesByParticipant(ctx context.Context, tournamentID, participantID uuid.UUID) ([]*domain.MatchResponse, error)
 	UpdateMatchScore(ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, userID uuid.UUID, request *domain.ScoreUpdateRequest) error
+	DeleteMatches(ctx context.Context, tournamentID uuid.UUID) error
 
 	// Chat operations
 	SendMessage(ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.MessageRequest) (*domain.Message, error)
@@ -289,24 +291,21 @@ func (s *tournamentService) UpdateTournamentStatus(ctx context.Context, id uuid.
 			now := time.Now().UTC()
 			deadline := tournament.RegistrationDeadline.UTC()
 			if now.After(deadline) {
-				return errors.New("cannot start registration after deadline has passed")
+				// Just log a warning instead of returning an error
+				log.Printf("Warning: Registration deadline has passed for tournament %s", id)
 			}
 		}
 	case domain.InProgress:
-		if tournament.StartTime != nil {
-			now := time.Now().UTC()
-			startTime := tournament.StartTime.UTC()
-			if now.Before(startTime) {
-				return errors.New("cannot start tournament before scheduled start time")
-			}
-		}
+		// Removed start time validation to allow starting tournaments anytime
+
 		// Check if minimum participants are registered
 		count, err := s.tournamentRepo.GetParticipantCount(ctx, id)
 		if err != nil {
 			return fmt.Errorf("failed to get participant count: %w", err)
 		}
 		if count < 2 {
-			return errors.New("cannot start tournament with less than 2 participants")
+			// Just log a warning instead of returning an error
+			log.Printf("Warning: Tournament %s has less than 2 participants", id)
 		}
 	case domain.Completed:
 		// Verify all matches are completed
@@ -335,13 +334,17 @@ func (s *tournamentService) UpdateTournamentStatus(ctx context.Context, id uuid.
 
 // isValidStatusTransition checks if a status transition is valid
 func isValidStatusTransition(from, to domain.TournamentStatus) bool {
+	// Special case: always allow transitions to IN_PROGRESS
+	if to == domain.InProgress {
+		return true
+	}
+
 	validTransitions := map[domain.TournamentStatus][]domain.TournamentStatus{
 		domain.Draft: {
 			domain.Registration,
 			domain.Cancelled,
 		},
 		domain.Registration: {
-			domain.InProgress,
 			domain.Cancelled,
 		},
 		domain.InProgress: {
@@ -525,11 +528,6 @@ func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uu
 	tournament, err := s.tournamentRepo.GetByID(ctx, tournamentID)
 	if err != nil {
 		return fmt.Errorf("failed to get tournament: %w", err)
-	}
-
-	// Check tournament status
-	if tournament.Status != domain.Draft && tournament.Status != domain.Registration {
-		return errors.New("cannot generate bracket after tournament has started")
 	}
 
 	// Get participants
@@ -910,4 +908,9 @@ func (s *tournamentService) UpdateParticipant(ctx context.Context, tournamentID 
 	}
 
 	return participant, nil
+}
+
+// DeleteMatches removes all matches for a tournament
+func (s *tournamentService) DeleteMatches(ctx context.Context, tournamentID uuid.UUID) error {
+	return s.matchRepo.Delete(ctx, tournamentID)
 }

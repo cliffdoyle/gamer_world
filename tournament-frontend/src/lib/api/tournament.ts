@@ -9,7 +9,7 @@ interface TournamentResponse {
 }
 
 interface AddParticipantRequest {
-  ParticipantName: string;
+  participant_name: string;
 }
 
 export const tournamentApi = {
@@ -69,22 +69,43 @@ export const tournamentApi = {
   },
 
   // Update tournament status
-  updateTournamentStatus: async (token: string, id: string, status: string): Promise<Tournament> => {
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.TOURNAMENT_DETAIL(id)}/status`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ status }),
-    });
+  updateTournamentStatus: async (
+    token: string,
+    tournamentId: string,
+    status: string
+  ): Promise<Tournament> => {
+    try {
+      if (!token) {
+        throw new Error('Authentication token is required');
+      }
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to update tournament status');
+      if (!tournamentId) {
+        throw new Error('Tournament ID is required');
+      }
+
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.TOURNAMENT_DETAIL(tournamentId)}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update tournament status');
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('An unexpected error occurred while updating tournament status');
     }
-
-    return response.json();
   },
 
   // Get tournament participants
@@ -105,15 +126,19 @@ export const tournamentApi = {
   },
 
   // Add participant to tournament
-  addParticipant: async (token: string, tournamentId: string, data: AddParticipantRequest): Promise<Participant> => {
-    console.log('API sending data:', data);
+  addParticipant: async (token: string, tournamentId: string, data: { name: string }): Promise<Participant> => {
+    console.log('API sending data:', {
+      participant_name: data.name
+    });
     const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.PARTICIPANTS(tournamentId)}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        participant_name: data.name
+      }),
     });
 
     const responseData = await response.json();
@@ -128,20 +153,28 @@ export const tournamentApi = {
   },
 
   // Get tournament matches
-  getMatches: async (token: string, tournamentId: string): Promise<Match[]> => {
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.MATCHES(tournamentId)}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+  getMatches: async (token: string, tournamentId: string): Promise<Array<Match>> => {
+    try {
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.MATCHES(tournamentId)}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to fetch matches');
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`Error in getMatches:`, error);
+      throw error;
     }
-
-    return response.json();
   },
 
   // Generate tournament bracket
@@ -164,20 +197,32 @@ export const tournamentApi = {
 
   // Update match score
   updateMatch: async (token: string, tournamentId: string, matchId: string, score: string): Promise<Match> => {
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.UPDATE_MATCH(tournamentId, matchId)}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ score }),
-    });
+    try {
+      console.log(`Sending match update: Tournament=${tournamentId}, Match=${matchId}, Score=${score}`);
+      
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.UPDATE_MATCH(tournamentId, matchId)}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ score }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to update match');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('Error response from server:', errorData);
+        throw new Error(errorData?.message || `Failed to update match (Status: ${response.status})`);
+      }
+
+      // Parse the response data
+      const matchData = await response.json();
+      console.log('Updated match data received:', matchData);
+      
+      return matchData;
+    } catch (error) {
+      console.error('Error in updateMatch:', error);
+      throw error;
     }
-
-    return response.json();
   },
 }; 
