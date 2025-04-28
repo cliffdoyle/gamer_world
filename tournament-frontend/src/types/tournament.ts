@@ -1,5 +1,6 @@
 export type TournamentFormat = 'SINGLE_ELIMINATION' | 'DOUBLE_ELIMINATION' | 'ROUND_ROBIN' | 'SWISS';
 export type TournamentStatus = 'DRAFT' | 'REGISTRATION' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type BracketType = 'WINNERS' | 'LOSERS' | 'GRAND_FINALS' | null;
 
 export interface Tournament {
   id: string;
@@ -59,5 +60,6 @@ export interface Match {
   status: string;
   created_at?: string;
   updated_at?: string;
-  bracket?: 'WINNERS' | 'LOSERS' | null;
+  bracket?: BracketType;
+  isGrandFinal?: boolean;
 } 

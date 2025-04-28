@@ -196,9 +196,21 @@ export const tournamentApi = {
   },
 
   // Update match score
-  updateMatch: async (token: string, tournamentId: string, matchId: string, score: string): Promise<Match> => {
+  updateMatch: async (token: string, tournamentId: string, matchId: string, match: { 
+    participant1Score?: number, 
+    participant2Score?: number, 
+    winnerId?: string,
+    status?: string
+  }): Promise<Match> => {
     try {
-      console.log(`Sending match update: Tournament=${tournamentId}, Match=${matchId}, Score=${score}`);
+      console.log(`Sending match update: Tournament=${tournamentId}, Match=${matchId}`, match);
+      
+      // Map frontend field names to what the backend expects
+      const requestBody = {
+        score_participant1: match.participant1Score,
+        score_participant2: match.participant2Score,
+        // Backend doesn't need winnerId or status as they're determined server-side
+      };
       
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.UPDATE_MATCH(tournamentId, matchId)}`, {
         method: 'PUT',
@@ -206,7 +218,7 @@ export const tournamentApi = {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ score }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {

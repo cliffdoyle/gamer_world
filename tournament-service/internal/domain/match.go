@@ -32,6 +32,7 @@ type Match struct {
 	ScheduledTime     *time.Time  `json:"scheduled_time,omitempty"`
 	CompletedTime     *time.Time  `json:"completed_time,omitempty"`
 	NextMatchID       *uuid.UUID  `json:"next_match_id,omitempty"`
+	LoserNextMatchID  *uuid.UUID  `json:"loser_next_match_id,omitempty"`
 	CreatedAt         time.Time   `json:"created_at"`
 	UpdatedAt         time.Time   `json:"updated_at"`
 	MatchNotes        string      `json:"match_notes,omitempty"`
@@ -54,6 +55,7 @@ type MatchResponse struct {
 	ScheduledTime     *time.Time  `json:"scheduled_time,omitempty"`
 	CompletedTime     *time.Time  `json:"completed_time,omitempty"`
 	NextMatchID       *uuid.UUID  `json:"next_match_id,omitempty"`
+	LoserNextMatchID  *uuid.UUID  `json:"loser_next_match_id,omitempty"`
 	CreatedAt         time.Time   `json:"created_at"`
 	MatchNotes        string      `json:"match_notes,omitempty"`
 	MatchProofs       []string    `json:"match_proofs,omitempty"`

@@ -53,11 +53,11 @@ func (r *matchRepository) Create(ctx context.Context, match *domain.Match) error
 			winner_id, loser_id,
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
-			next_match_id, created_at, updated_at,
+			next_match_id, loser_next_match_id, created_at, updated_at,
 			match_notes, match_proofs
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18
+			$11, $12, $13, $14, $15, $16, $17, $18, $19
 		)
 	`,
 		match.ID,
@@ -74,6 +74,7 @@ func (r *matchRepository) Create(ctx context.Context, match *domain.Match) error
 		match.ScheduledTime,
 		match.CompletedTime,
 		match.NextMatchID,
+		match.LoserNextMatchID,
 		match.CreatedAt,
 		match.UpdatedAt,
 		match.MatchNotes,
@@ -97,7 +98,7 @@ func (r *matchRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ma
 			winner_id, loser_id,
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
-			next_match_id, created_at, updated_at,
+			next_match_id, loser_next_match_id, created_at, updated_at,
 			match_notes, match_proofs
 		FROM matches
 		WHERE id = $1
@@ -116,6 +117,7 @@ func (r *matchRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ma
 		&match.ScheduledTime,
 		&match.CompletedTime,
 		&match.NextMatchID,
+		&match.LoserNextMatchID,
 		&match.CreatedAt,
 		&match.UpdatedAt,
 		&match.MatchNotes,
@@ -148,7 +150,7 @@ func (r *matchRepository) GetByTournamentID(ctx context.Context, tournamentID uu
 			winner_id, loser_id,
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
-			next_match_id, created_at, updated_at,
+			next_match_id, loser_next_match_id, created_at, updated_at,
 			match_notes, match_proofs
 		FROM matches
 		WHERE tournament_id = $1
@@ -181,6 +183,7 @@ func (r *matchRepository) GetByTournamentID(ctx context.Context, tournamentID uu
 			&match.ScheduledTime,
 			&match.CompletedTime,
 			&match.NextMatchID,
+			&match.LoserNextMatchID,
 			&match.CreatedAt,
 			&match.UpdatedAt,
 			&match.MatchNotes,
@@ -212,7 +215,7 @@ func (r *matchRepository) GetByRound(ctx context.Context, tournamentID uuid.UUID
 			winner_id, loser_id,
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
-			next_match_id, created_at, updated_at,
+			next_match_id, loser_next_match_id, created_at, updated_at,
 			match_notes, match_proofs
 		FROM matches
 		WHERE tournament_id = $1 AND round = $2
@@ -245,6 +248,7 @@ func (r *matchRepository) GetByRound(ctx context.Context, tournamentID uuid.UUID
 			&match.ScheduledTime,
 			&match.CompletedTime,
 			&match.NextMatchID,
+			&match.LoserNextMatchID,
 			&match.CreatedAt,
 			&match.UpdatedAt,
 			&match.MatchNotes,
@@ -276,7 +280,7 @@ func (r *matchRepository) GetByParticipant(ctx context.Context, tournamentID, pa
 			winner_id, loser_id,
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
-			next_match_id, created_at, updated_at,
+			next_match_id, loser_next_match_id, created_at, updated_at,
 			match_notes, match_proofs
 		FROM matches
 		WHERE tournament_id = $1 
@@ -310,6 +314,7 @@ func (r *matchRepository) GetByParticipant(ctx context.Context, tournamentID, pa
 			&match.ScheduledTime,
 			&match.CompletedTime,
 			&match.NextMatchID,
+			&match.LoserNextMatchID,
 			&match.CreatedAt,
 			&match.UpdatedAt,
 			&match.MatchNotes,
@@ -356,10 +361,11 @@ func (r *matchRepository) Update(ctx context.Context, match *domain.Match) error
 			scheduled_time = $8,
 			completed_time = $9,
 			next_match_id = $10,
-			updated_at = $11,
-			match_notes = $12,
-			match_proofs = $13
-		WHERE id = $14
+			loser_next_match_id = $11,
+			updated_at = $12,
+			match_notes = $13,
+			match_proofs = $14
+		WHERE id = $15
 	`,
 		match.Participant1ID,
 		match.Participant2ID,
@@ -371,6 +377,7 @@ func (r *matchRepository) Update(ctx context.Context, match *domain.Match) error
 		match.ScheduledTime,
 		match.CompletedTime,
 		match.NextMatchID,
+		match.LoserNextMatchID,
 		match.UpdatedAt,
 		match.MatchNotes,
 		proofsJSON,

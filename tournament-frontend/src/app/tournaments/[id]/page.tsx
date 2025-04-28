@@ -6,6 +6,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { tournamentApi } from '@/lib/api/tournament';
 import { Tournament, Participant, Match, TournamentFormat } from '@/types/tournament';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import BracketRenderer from '@/components/tournament/BracketRenderer';
+import MatchScoreEditor from '@/components/tournament/MatchScoreEditor';
 
 interface AddParticipantFormData {
   name: string;
@@ -139,7 +141,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     }
   };
 
-  const handleUpdateMatchScore = async (matchId: string) => {
+  const handleUpdateMatchScore = async (matchId: string, score1: string, score2: string) => {
     if (!token || !tournament) return;
     setIsSubmittingScore(true);
     
@@ -150,33 +152,36 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       }
       
       // Validate scores
-      const score1 = parseInt(scoreForm.score1);
-      const score2 = parseInt(scoreForm.score2);
+      const score1Num = parseInt(score1);
+      const score2Num = parseInt(score2);
       
-      if (isNaN(score1) || isNaN(score2) || score1 < 0 || score2 < 0) {
+      if (isNaN(score1Num) || isNaN(score2Num) || score1Num < 0 || score2Num < 0) {
         throw new Error('Invalid scores. Please enter valid positive numbers.');
       }
       
       // Tie check - cannot have ties in tournament matches
-      if (score1 === score2) {
+      if (score1Num === score2Num) {
         throw new Error('Match cannot end in a tie. Please provide a winner.');
       }
       
-      // Format the score string as expected by the API
-      const scoreString = `${score1}-${score2}`;
-      console.log(`Updating match ${matchId} with score: ${scoreString}`);
-      
-      // Determine winner
-      const winnerId = score1 > score2 
+      // Determine winner ID based on scores
+      const winnerId = score1Num > score2Num 
         ? match.participant1_id 
         : match.participant2_id;
       
-      if (!winnerId) {
-        throw new Error('Cannot determine winner. Please check participant data.');
-      }
+      // Ensure winnerId is not null before passing it
+      const winnerIdParam = winnerId === null ? undefined : winnerId;
       
-      // Call API to update match
-      const updatedMatch = await tournamentApi.updateMatch(token, tournamentId, matchId, scoreString);
+      console.log(`Updating match ${matchId} with scores: ${score1Num}-${score2Num}, winner: ${winnerId}`);
+      
+      // Call API to update match with separate scores
+      const updatedMatch = await tournamentApi.updateMatch(token, tournamentId, matchId, {
+        participant1Score: score1Num,
+        participant2Score: score2Num,
+        winnerId: winnerIdParam,
+        status: 'COMPLETED'
+      });
+      
       console.log('Match updated successfully:', updatedMatch);
       
       // Show success message
@@ -200,7 +205,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('Failed to update match score');
+        setError('An error occurred while updating the match');
       }
     } finally {
       setIsSubmittingScore(false);
@@ -368,360 +373,101 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       );
     }
 
-    // Prepare data with proper bracket assignments
-    const processedMatches = prepareBracketData(matches, tournament.format);
-    
-    // Separate winners and losers bracket
-    const winnersMatches = processedMatches.filter(m => m.bracket === 'WINNERS' || !m.bracket);
-    const losersMatches = processedMatches.filter(m => m.bracket === 'LOSERS');
-    
-    // Find grand finals
-    const grandFinalMatches = processedMatches.filter(m => m.isGrandFinal === true);
-    
-    // Remove grand finals from winners matches for separate display
-    const regularWinnersMatches = winnersMatches.filter(m => m.isGrandFinal !== true);
-    
-    const isDoubleElimination = tournament.format === 'DOUBLE_ELIMINATION' && losersMatches.length > 0;
-    
-    // Calculate round information for proper spacing
-    const winnersMaxRound = Math.max(...regularWinnersMatches.map(m => m.round), 0);
-    const losersMaxRound = Math.max(...losersMatches.map(m => m.round), 0);
-    const maxRound = Math.max(winnersMaxRound, losersMaxRound) + (grandFinalMatches.length > 0 ? 1 : 0);
-    
-    // Function to create connection lines to the grand final
-    const renderGrandFinalConnections = () => {
-      if (grandFinalMatches.length === 0) return null;
-      
-      // Calculate connection points
-      const grandFinal = grandFinalMatches[0];
-      const winnersFinalMatch = regularWinnersMatches.find(m => 
-        m.round === winnersMaxRound && 
-        m.winner_id === grandFinal.participant1_id
-      );
-      
-      const losersFinalMatch = losersMatches.find(m => 
-        m.round === losersMaxRound && 
-        m.winner_id === grandFinal.participant2_id
-      );
-      
-      const rightEdge = maxRound * 220;
-      const grandFinalLeft = rightEdge - 220;
-      
-      return (
-        <>
-          {/* Winner's bracket connection */}
-          {winnersFinalMatch && (
-            <svg className="absolute" style={{ 
-              zIndex: 1, 
-              pointerEvents: 'none',
-              top: '80px',
-              left: 0,
-              width: '100%',
-              height: '100%'
-            }}>
-              <path 
-                d={`M ${winnersMaxRound * 220 - 20} 100 
-                    H ${grandFinalLeft - 50} 
-                    V 180 
-                    H ${grandFinalLeft - 10}`}
-                stroke="#94a3b8"
-                strokeWidth="2"
-                fill="none"
-              />
-            </svg>
-          )}
-          
-          {/* Loser's bracket connection */}
-          {losersFinalMatch && (
-            <svg className="absolute" style={{ 
-              zIndex: 1, 
-              pointerEvents: 'none',
-              top: '80px',
-              left: 0,
-              width: '100%',
-              height: '100%'
-            }}>
-              <path 
-                d={`M ${losersMaxRound * 220 - 20} 320 
-                    H ${grandFinalLeft - 50} 
-                    V 220 
-                    H ${grandFinalLeft - 10}`}
-                stroke="#94a3b8"
-                strokeWidth="2"
-                fill="none"
-              />
-            </svg>
-          )}
-        </>
-      );
-    };
-
-    // Render grand finals at the far right
-    const renderGrandFinalsSection = () => {
-      if (grandFinalMatches.length === 0) return null;
-      
-      return (
-        <div className="absolute" style={{ 
-          right: '20px', 
-          top: '120px', 
-          width: '200px',
-          zIndex: 10
-        }}>
-          {grandFinalMatches.map(match => (
-            <div key={match.id} className="border-2 border-yellow-300 rounded-lg bg-white p-3 shadow-lg">
-              <div className="flex justify-between items-center border-b pb-2 mb-2">
-                <span className="text-sm font-medium text-yellow-700">
-                  Grand Finals
-                </span>
-                <span className={`text-xs px-2 py-1 rounded ${
-                  match.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-blue-50 text-blue-600'
-                }`}>
-                  {match.status || 'PENDING'}
-                </span>
-              </div>
-              
-              <div className="flex flex-col justify-between">
-                <div className={`flex justify-between items-center py-2 ${
-                  match.winner_id === match.participant1_id ? 'font-bold bg-green-50 rounded px-2' : ''
-                }`}>
-                  <span className="text-sm" title={getParticipantNameById(match.participant1_id)}>
-                    {getParticipantNameById(match.participant1_id)}
-                  </span>
-                  <span className="bg-gray-50 px-2 py-1 rounded">
-                    {match.score_participant1 ?? '-'}
-                  </span>
-                </div>
-                
-                <div className="border-t border-gray-200 my-2"></div>
-                
-                <div className={`flex justify-between items-center py-2 ${
-                  match.winner_id === match.participant2_id ? 'font-bold bg-green-50 rounded px-2' : ''
-                }`}>
-                  <span className="text-sm" title={getParticipantNameById(match.participant2_id)}>
-                    {getParticipantNameById(match.participant2_id)}
-                  </span>
-                  <span className="bg-gray-50 px-2 py-1 rounded">
-                    {match.score_participant2 ?? '-'}
-                  </span>
-                </div>
-              </div>
-              
-              {match.status !== 'COMPLETED' && (
-                <div className="mt-2 text-xs text-gray-600 border-t border-gray-100 pt-2">
-                  <p>Update the score to determine the tournament champion</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      );
-    };
-    
-    return (
-      <div className="overflow-auto pb-6 challonge-bracket">
-        {/* Tournament format specific information header */}
-        <div className={`p-4 rounded-lg border mb-4 ${tournament.format === 'SINGLE_ELIMINATION' ? 'bg-blue-50 border-blue-200' : 'bg-yellow-50 border-yellow-200'}`}>
-          <h3 className={`text-base font-medium mb-1 ${tournament.format === 'SINGLE_ELIMINATION' ? 'text-blue-700' : 'text-yellow-700'}`}>
-            {tournament.format === 'SINGLE_ELIMINATION' ? 'Single Elimination Tournament' : 'Double Elimination Tournament'}
-          </h3>
-          <p className={`text-sm ${tournament.format === 'SINGLE_ELIMINATION' ? 'text-blue-600' : 'text-yellow-600'}`}>
-            {tournament.format === 'SINGLE_ELIMINATION' 
-              ? 'Players are eliminated after a single loss. The winner advances to the championship.' 
-              : 'Players must lose twice to be eliminated. Losers move to a separate bracket for a second chance.'}
-          </p>
-        </div>
-
-        {/* Main bracket container with relative positioning to allow grand finals placement */}
-        <div className="relative" style={{ minHeight: '500px' }}>
-          {/* Bracket container with specified width to ensure space for grand finals */}
-          <div className="flex flex-col" style={{ width: isDoubleElimination ? 'calc(100% - 220px)' : '100%' }}>
-            {/* Winners bracket section */}
-            {regularWinnersMatches.length > 0 && renderBracketSection(regularWinnersMatches, "Winners Bracket")}
-            
-            {/* Losers bracket section for double elimination */}
-            {isDoubleElimination && losersMatches.length > 0 && renderBracketSection(losersMatches, "Losers Bracket", true)}
-          </div>
-          
-          {/* Connection lines to grand finals */}
-          {isDoubleElimination && grandFinalMatches.length > 0 && renderGrandFinalConnections()}
-          
-          {/* Grand Finals section at the far right */}
-          {isDoubleElimination && grandFinalMatches.length > 0 && renderGrandFinalsSection()}
-          
-          {/* Final champion message if tournament is complete */}
-          {tournament.status === 'COMPLETED' && grandFinalMatches.some(m => m.winner_id) && (
-            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-              <h3 className="text-lg font-bold text-green-800 mb-2">Tournament Champion</h3>
-              <p className="text-green-700">
-                {getParticipantNameById(grandFinalMatches[0].winner_id)}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    // Use the BracketRenderer component
+    return <BracketRenderer 
+      tournament={tournament} 
+      matches={matches} 
+      participants={participants} 
+      onMatchClick={(match) => {
+        setIsEditingMatch(match.id);
+        setScoreForm({
+          score1: match.score_participant1?.toString() || '',
+          score2: match.score_participant2?.toString() || ''
+        });
+      }}
+    />;
   };
 
   // Function for list view rendering of matches
   const renderMatchList = (roundMatches: Match[]) => {
-    return roundMatches.map((match) => (
-      <div key={match.id} className="border rounded-lg p-4 shadow-sm hover:shadow-md bg-white">
-        <div className="flex justify-between items-center mb-3 pb-2 border-b">
-          <div>
-            <span className="text-sm font-semibold text-gray-700">Match {match.match_number}</span>
-            {match.bracket === 'LOSERS' && (
-              <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
-                Losers
+    if (roundMatches.length === 0) {
+      return (
+        <div className="text-sm text-gray-500 py-2">No matches in this round</div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {isEditingMatch && (
+          <MatchScoreEditor
+            match={matches.find(m => m.id === isEditingMatch)!}
+            participant1Name={getParticipantNameById(matches.find(m => m.id === isEditingMatch)?.participant1_id || null)}
+            participant2Name={getParticipantNameById(matches.find(m => m.id === isEditingMatch)?.participant2_id || null)}
+            onSubmit={(matchId, score1, score2) => handleUpdateMatchScore(matchId, score1, score2)}
+            onCancel={() => setIsEditingMatch(null)}
+            isSubmitting={isSubmittingScore}
+          />
+        )}
+
+        {roundMatches.map((match) => (
+          <div 
+            key={match.id} 
+            className={`border rounded-md shadow-sm p-4 bg-white ${
+              match.status === 'COMPLETED' ? 'border-green-200' : 'border-gray-200'
+            }`}
+          >
+            <div className="flex justify-between mb-2 items-center">
+              <span className="text-sm font-medium">Match {match.match_number}</span>
+              <span className={`text-xs px-2 py-1 rounded ${
+                match.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-blue-50 text-blue-600'
+              }`}>
+                {match.status || 'PENDING'}
               </span>
-            )}
-          </div>
-          <span className={`text-sm font-medium px-2 py-1 rounded-full ${
-            match.status === 'COMPLETED' 
-              ? 'bg-green-100 text-green-800' 
-              : 'bg-blue-100 text-blue-800'
-          }`}>
-            {match.status || 'PENDING'}
-          </span>
-        </div>
-        
-        {/* Match explanation */}
-        <div className="flex flex-col mb-3">
-          {match.next_match_id && (
-            <div className="text-xs text-gray-600 mb-1">
-              Winner advances to Match {matches.find(m => m.id === match.next_match_id)?.match_number || '?'}
             </div>
-          )}
-          
-          {match.bracket === 'WINNERS' && (
-            <div className="text-xs text-gray-600 mb-1">
-              Loser drops to losers bracket
-            </div>
-          )}
-        </div>
-        
-        <div className="rounded border overflow-hidden">
-          {/* Player 1 Row */}
-          <div 
-            className={`flex items-center p-3 ${
-              match.winner_id === match.participant1_id 
-                ? 'bg-green-50 border-l-4 border-green-500' 
-                : 'bg-white hover:bg-gray-50'
-            }`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center">
-                <span className={`font-medium text-base mr-2 ${match.winner_id === match.participant1_id ? 'text-green-700' : 'text-gray-800'}`}>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <div className={`flex-1 ${match.winner_id === match.participant1_id ? 'font-bold text-green-700' : ''}`}>
                   {getParticipantNameById(match.participant1_id)}
-                </span>
-                {match.winner_id === match.participant1_id && (
-                  <svg className="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                )}
+                </div>
+                <div className="px-3 py-1 bg-gray-50 rounded font-medium">
+                  {match.score_participant1 !== null ? match.score_participant1 : '-'}
+                </div>
               </div>
-            </div>
-            
-            {isEditingMatch === match.id ? (
-              <input
-                type="number"
-                min="0"
-                value={scoreForm.score1}
-                onChange={(e) => setScoreForm({...scoreForm, score1: e.target.value})}
-                className="w-16 text-center border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              />
-            ) : (
-              <div className="font-medium text-center px-3 py-1 bg-gray-100 rounded min-w-[2.5rem] inline-block">
-                {match.score_participant1 ?? 0}
-              </div>
-            )}
-          </div>
-          
-          {/* VS divider */}
-          <div className="flex justify-center items-center py-1 bg-gray-50 border-y">
-            <span className="text-xs font-medium text-gray-500">VS</span>
-          </div>
-          
-          {/* Player 2 Row */}
-          <div 
-            className={`flex items-center p-3 ${
-              match.winner_id === match.participant2_id 
-                ? 'bg-green-50 border-l-4 border-green-500' 
-                : 'bg-white hover:bg-gray-50'
-            }`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center">
-                <span className={`font-medium text-base mr-2 ${match.winner_id === match.participant2_id ? 'text-green-700' : 'text-gray-800'}`}>
+              
+              <div className="flex justify-between items-center">
+                <div className={`flex-1 ${match.winner_id === match.participant2_id ? 'font-bold text-green-700' : ''}`}>
                   {getParticipantNameById(match.participant2_id)}
-                </span>
-                {match.winner_id === match.participant2_id && (
-                  <svg className="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                )}
+                </div>
+                <div className="px-3 py-1 bg-gray-50 rounded font-medium">
+                  {match.score_participant2 !== null ? match.score_participant2 : '-'}
+                </div>
               </div>
             </div>
             
-            {isEditingMatch === match.id ? (
-              <input
-                type="number"
-                min="0"
-                value={scoreForm.score2}
-                onChange={(e) => setScoreForm({...scoreForm, score2: e.target.value})}
-                className="w-16 text-center border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              />
-            ) : (
-              <div className="font-medium text-center px-3 py-1 bg-gray-100 rounded min-w-[2.5rem] inline-block">
-                {match.score_participant2 ?? 0}
+            {match.status !== 'COMPLETED' && match.participant1_id && match.participant2_id && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => setIsEditingMatch(match.id)}
+                  disabled={isEditingMatch !== null}
+                  className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1 rounded border border-blue-200"
+                >
+                  Update Score
+                </button>
+              </div>
+            )}
+            
+            {match.status === 'COMPLETED' && (
+              <div className="mt-2 text-sm">
+                <span className="text-green-600 font-medium">
+                  Winner: {getParticipantNameById(match.winner_id)}
+                </span>
               </div>
             )}
           </div>
-        </div>
-        
-        {/* Edit/Save buttons */}
-        <div className="flex justify-end pt-3 mt-3">
-          {isEditingMatch === match.id ? (
-            <>
-              <button
-                onClick={() => handleUpdateMatchScore(match.id)}
-                disabled={isSubmittingScore}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 mr-2"
-              >
-                {isSubmittingScore ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
-                  </>
-                ) : 'Save Score'}
-              </button>
-              <button
-                onClick={() => setIsEditingMatch(null)}
-                disabled={isSubmittingScore}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => {
-                setIsEditingMatch(match.id);
-                setScoreForm({
-                  score1: match.score_participant1?.toString() || '0',
-                  score2: match.score_participant2?.toString() || '0'
-                });
-              }}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-            >
-              Edit Score
-            </button>
-          )}
-        </div>
+        ))}
       </div>
-    ));
+    );
   };
 
   // Add the missing functions needed for bracket rendering
