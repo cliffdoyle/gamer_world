@@ -564,27 +564,39 @@ func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uu
 		return fmt.Errorf("failed to generate bracket: %w", err)
 	}
 
-	// First, create all matches without next_match_id
-	matchesWithoutNext := make([]*domain.Match, len(matches))
+	// First, create all matches without next_match_id or loser_next_match_id
+	matchesWithoutReferences := make([]*domain.Match, len(matches))
 	for i, match := range matches {
 		matchCopy := *match
 		matchCopy.NextMatchID = nil
-		matchesWithoutNext[i] = &matchCopy
+		matchCopy.LoserNextMatchID = nil
+		matchesWithoutReferences[i] = &matchCopy
 	}
 
-	// Save matches without next_match_id
-	for _, match := range matchesWithoutNext {
+	// Save matches without references
+	for _, match := range matchesWithoutReferences {
 		if err := s.matchRepo.Create(ctx, match); err != nil {
 			return fmt.Errorf("failed to create match: %w", err)
 		}
 	}
 
-	// Now update matches with their next_match_id
+	// Now update matches with their next_match_id and loser_next_match_id
 	for i, match := range matches {
+		needsUpdate := false
+
 		if match.NextMatchID != nil {
-			matchesWithoutNext[i].NextMatchID = match.NextMatchID
-			if err := s.matchRepo.Update(ctx, matchesWithoutNext[i]); err != nil {
-				return fmt.Errorf("failed to update match with next_match_id: %w", err)
+			matchesWithoutReferences[i].NextMatchID = match.NextMatchID
+			needsUpdate = true
+		}
+
+		if match.LoserNextMatchID != nil {
+			matchesWithoutReferences[i].LoserNextMatchID = match.LoserNextMatchID
+			needsUpdate = true
+		}
+
+		if needsUpdate {
+			if err := s.matchRepo.Update(ctx, matchesWithoutReferences[i]); err != nil {
+				return fmt.Errorf("failed to update match with references: %w", err)
 			}
 		}
 	}
@@ -617,6 +629,7 @@ func (s *tournamentService) GetMatches(ctx context.Context, tournamentID uuid.UU
 			ScheduledTime:     match.ScheduledTime,
 			CompletedTime:     match.CompletedTime,
 			NextMatchID:       match.NextMatchID,
+			LoserNextMatchID:  match.LoserNextMatchID,
 			CreatedAt:         match.CreatedAt,
 			MatchNotes:        match.MatchNotes,
 			MatchProofs:       match.MatchProofs,
@@ -652,6 +665,7 @@ func (s *tournamentService) GetMatchesByRound(ctx context.Context, tournamentID 
 			ScheduledTime:     match.ScheduledTime,
 			CompletedTime:     match.CompletedTime,
 			NextMatchID:       match.NextMatchID,
+			LoserNextMatchID:  match.LoserNextMatchID,
 			CreatedAt:         match.CreatedAt,
 			MatchNotes:        match.MatchNotes,
 			MatchProofs:       match.MatchProofs,
@@ -687,6 +701,7 @@ func (s *tournamentService) GetMatchesByParticipant(ctx context.Context, tournam
 			ScheduledTime:     match.ScheduledTime,
 			CompletedTime:     match.CompletedTime,
 			NextMatchID:       match.NextMatchID,
+			LoserNextMatchID:  match.LoserNextMatchID,
 			CreatedAt:         match.CreatedAt,
 			MatchNotes:        match.MatchNotes,
 			MatchProofs:       match.MatchProofs,
@@ -765,6 +780,29 @@ func (s *tournamentService) UpdateMatchScore(ctx context.Context, tournamentID u
 		err = s.matchRepo.Update(ctx, match)
 		if err != nil {
 			return fmt.Errorf("failed to update match: %w", err)
+		}
+
+		// For double elimination tournaments:
+		// Move loser to losers bracket if applicable
+		if tournament.Format == domain.DoubleElimination && loserID != nil && match.LoserNextMatchID != nil {
+			// Get the loser's destination match
+			loserMatch, err := s.matchRepo.GetByID(ctx, *match.LoserNextMatchID)
+			if err != nil {
+				log.Printf("Warning: Failed to get loser's next match: %v", err)
+			} else {
+				// Determine which slot to put the loser in
+				if loserMatch.Participant1ID == nil {
+					loserMatch.Participant1ID = loserID
+				} else {
+					loserMatch.Participant2ID = loserID
+				}
+
+				// Update loser match with the losing participant
+				err = s.matchRepo.Update(ctx, loserMatch)
+				if err != nil {
+					log.Printf("Warning: Failed to move loser to losers bracket: %v", err)
+				}
+			}
 		}
 
 		// Advance winner to next match if applicable
