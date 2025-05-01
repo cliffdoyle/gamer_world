@@ -176,6 +176,7 @@ func singleElimBracket(parti []*partici)([]*partici,[]*partici){
 		}
 
 		roundMatches[1]=append(roundMatches[1],&match)
+		fmt.Println(roundMatches[1])
 		matchCounter++
 		matches=append(matches,&match)
 	}
