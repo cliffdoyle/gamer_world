@@ -21,6 +21,8 @@ type match struct{
 	matchNum int
 	participant1ID uuid.UUID
 	participant2ID uuid.UUID
+	previousMatch1ID   *uuid.UUID
+	previousMatch2ID   *uuid.UUID
 }
 //generateByePos returns the positions that should get byes
 //higher seeds are prioritized first
@@ -179,6 +181,54 @@ func singleElimBracket(parti []*partici)([]*partici,[]*partici){
 	}
 	fmt.Println("round 1 matches",roundMatches[1])
 	printMatches(matches)
+
+	// round1Winners:=len(roundMatches)
+	// fmt.Println("round 1 winners",round1Winners)
+	// byesParticipants:=len(byeParticipants)
+	// fmt.Println("byes participants",byesParticipants)
+	// totalParticipantsinRound2:=round1Winners+byesParticipants
+	// fmt.Println("total participants in round 2",totalParticipantsinRound2)
+
+	//matches in round 2
+	var round2Participants []interface{}
+	//Add byes first
+	for _,p:=range byeParticipants{
+		round2Participants=append(round2Participants,p)
+	}
+	//Add round 1 winners
+	for _,m:=range roundMatches[1]{
+		round2Participants=append(round2Participants, m)
+	}
+
+	fmt.Println("round 2 participants",round2Participants)
+	//generate matches for round 2
+	for i:=0;i<len(round2Participants);i+=2{
+		m:=&match{
+			id: uuid.New(),
+			round: 2,
+		}
+		//player 1
+		switch v :=round2Participants[i].(type){
+		case *partici:
+			m.participant1ID=v.id
+		case *match:
+			m.previousMatch1ID=&v.id
+		}
+
+		//player 2
+		if i+1<len(round2Participants){
+			switch v:=round2Participants[i+1].(type){
+				case *partici:
+					m.participant2ID=v.id
+				case *match:
+					m.previousMatch2ID=&v.id
+		}
+	}
+	roundMatches[2]=append(roundMatches[2], m)
+	fmt.Println("round 2 matches",roundMatches[2])
+	matches=append(matches,m)
+	fmt.Println("matches after round 2",matches)
+}
 
 
 	return byeParticipants,remainingParticipants
