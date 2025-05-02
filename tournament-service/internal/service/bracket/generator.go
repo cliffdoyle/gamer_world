@@ -121,8 +121,8 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 
 	// Create first round matches for remaining participants
 	participantsWithMatches := make([]*domain.Participant, 0, numParticipants-byeCount)
-	for i := byeCount*2; i < len(seededParticipants); i++ {
-		if i < len(seededParticipants) && seededParticipants[i] != nil {
+	for i := 0; i < len(seededParticipants); i++ {
+		if !isInByes(seededParticipants[i],byeParticipants) && seededParticipants[i] != nil {
 			participantsWithMatches = append(participantsWithMatches, seededParticipants[i])
 		}
 	}
@@ -292,7 +292,7 @@ func generateMatchPositions(bracketSize int, byePositions []int) []int {
 	return positions
 }
 
-func isInByes(p domain.Participant,byes []domain.Participant)bool{
+func isInByes(p *domain.Participant,byes []*domain.Participant)bool{
 	for _,b:=range byes{
 		if b==p{
 			return true
