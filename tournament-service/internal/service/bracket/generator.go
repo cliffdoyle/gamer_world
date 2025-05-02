@@ -108,8 +108,8 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 
 	// Generate first round matches
 	// The key difference: we only create matches for actual participants with no "TBD" placeholders
-	firstRoundMatchCount := numParticipants / 2
-	byeCount := participantsPowerOfTwo/2 - firstRoundMatchCount
+	// firstRoundMatchCount := numParticipants / 2
+	byeCount := participantsPowerOfTwo-numParticipants
 	
 	// Process participants who get byes first (no first round match)
 	byeParticipants := make([]*domain.Participant, 0, byeCount)
