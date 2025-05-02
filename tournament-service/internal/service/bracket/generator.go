@@ -128,7 +128,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 	}
 
 	// Create matches for those who don't have byes
-	for i := 0; i < len(participantsWithMatches)/2; i++ {
+	for i := 0; i < len(participantsWithMatches); i+=2 {
 		match := &domain.Match{
 			ID:           uuid.New(),
 			TournamentID: tournamentID,
@@ -152,7 +152,21 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 		matchCounter++
 	}
 
-	// Create subsequent rounds
+
+	// Round 2
+	//Add byes participant already in round 2 and the winners of round 1
+	//we put the two different categories in an interface slice
+	var round2Participants []interface{}
+
+	//Add the byes participants to the interface
+	for _,p:=range byeParticipants{
+		round2Participants=append(round2Participants, p)
+	}
+
+	//now we add round 1 winners
+	for _,m:=range roundMatches[1]{
+		round2Participants=append(round2Participants, m)
+	}
 	// Round 2 is special because some participants get byes directly to round 2
 	matchesInRound2 := (len(participantsWithMatches) + byeCount*2) / 2
 	for i := 0; i < matchesInRound2; i++ {
