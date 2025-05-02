@@ -137,12 +137,12 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 			Status:       domain.MatchPending,
 		}
 
-		if 2*i < len(participantsWithMatches) {
+		if i < len(participantsWithMatches) {
 			participant1 := participantsWithMatches[2*i]
 			match.Participant1ID = &participant1.ID
 		}
 
-		if 2*i+1 < len(participantsWithMatches) {
+		if i+1 < len(participantsWithMatches) {
 			participant2 := participantsWithMatches[2*i+1]
 			match.Participant2ID = &participant2.ID
 		}
@@ -167,65 +167,127 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 	for _,m:=range roundMatches[1]{
 		round2Participants=append(round2Participants, m)
 	}
-	// Round 2 is special because some participants get byes directly to round 2
-	matchesInRound2 := (len(participantsWithMatches) + byeCount*2) / 2
-	for i := 0; i < matchesInRound2; i++ {
-		match := &domain.Match{
-			ID:           uuid.New(),
+
+	//generate matches for round 2
+	for i:=0;i<len(round2Participants);i+=2{
+		m:=&domain.Match{
+			ID: uuid.New(),
 			TournamentID: tournamentID,
-			Round:        2,
-			MatchNumber:  matchCounter,
-			Status:       domain.MatchPending,
+			Round: 2,
+			MatchNumber: matchCounter,
+			Status: domain.MatchPending,
 		}
 
-		// Assign participants with byes directly to round 2
-		if i < len(byeParticipants) {
-			match.Participant1ID = &byeParticipants[i].ID
+		//get player 1
+		switch v:=round2Participants[i].(type) {
+		case *domain.Participant:
+			m.Participant1ID=&v.ID
+		case domain.Match:
+			v.NextMatchID=&m.ID
+			
 		}
 
-		roundMatches[2] = append(roundMatches[2], match)
-		matches = append(matches, match)
+		//getting player 2 now
+		if i+1 < len(round2Participants){
+			switch v:=round2Participants[i+1].(type){
+			case *domain.Participant:
+				m.Participant2ID=&v.ID
+			case domain.Match:
+				v.NextMatchID=&m.ID
+			}
+		}
+		roundMatches[2]=append(roundMatches[2], m)
+		matches=append(matches, m)
 		matchCounter++
 	}
 
-	// Link first round matches to second round
-	for i, match := range roundMatches[1] {
-		if i/2 < len(roundMatches[2]) {
-			nextMatch := roundMatches[2][i/2]
-			match.NextMatchID = &nextMatch.ID
+	//subsequent matches after one, loop numround times from 2
+	for round:=3;round<=numRounds;round++{
+		prevRoundMatches:=roundMatches[round-1]
+		currentRound:=make([]*domain.Match,0)
 
-			// If this is an odd-indexed match and there's a bye in the next match,
-			// the participant2 position is already filled
-			if i%2 == 1 && nextMatch.Participant1ID != nil && nextMatch.Participant2ID == nil {
-				// Nothing to do, participant will go to participant2 position
-			}
-		}
-	}
-
-	// Create remaining rounds (3 and up)
-	for round := 3; round <= numRounds; round++ {
-		matchesInRound := participantsPowerOfTwo / int(math.Pow(2, float64(round)))
-		for i := 0; i < matchesInRound; i++ {
-			match := &domain.Match{
-				ID:           uuid.New(),
-				TournamentID: tournamentID,
-				Round:        round,
+		for i:=0;i<len(prevRoundMatches);i+=2{
+			match:=&domain.Match{
+				ID: uuid.New(),
+				Round: round,
 				MatchNumber:  matchCounter,
 				Status:       domain.MatchPending,
 			}
 
-			roundMatches[round] = append(roundMatches[round], match)
-			matches = append(matches, match)
+			//set forward links in previous matches
+			if i < len(prevRoundMatches){
+				prevRoundMatches[i].NextMatchID=&match.ID
+			}
+
+			if i+1 < len(prevRoundMatches){
+				prevRoundMatches[i+1].NextMatchID=&match.ID
+			}
+
+			currentRound=append(currentRound, match)
+			matches=append(matches, match)
 			matchCounter++
 		}
-
-		// Link previous round matches to this round
-		for i, prevMatch := range roundMatches[round-1] {
-			if i/2 < len(roundMatches[round]) {
-				prevMatch.NextMatchID = &roundMatches[round][i/2].ID
-			}
-		}
+		roundMatches[round]=currentRound
 	}
+	// // Round 2 is special because some participants get byes directly to round 2
+	// matchesInRound2 := (len(participantsWithMatches) + byeCount*2) / 2
+	// for i := 0; i < matchesInRound2; i++ {
+	// 	match := &domain.Match{
+	// 		ID:           uuid.New(),
+	// 		TournamentID: tournamentID,
+	// 		Round:        2,
+	// 		MatchNumber:  matchCounter,
+	// 		Status:       domain.MatchPending,
+	// 	}
+
+	// 	// Assign participants with byes directly to round 2
+	// 	if i < len(byeParticipants) {
+	// 		match.Participant1ID = &byeParticipants[i].ID
+	// 	}
+
+	// 	roundMatches[2] = append(roundMatches[2], match)
+	// 	matches = append(matches, match)
+	// 	matchCounter++
+	// }
+
+	// // Link first round matches to second round
+	// for i, match := range roundMatches[1] {
+	// 	if i/2 < len(roundMatches[2]) {
+	// 		nextMatch := roundMatches[2][i/2]
+	// 		match.NextMatchID = &nextMatch.ID
+
+	// 		// If this is an odd-indexed match and there's a bye in the next match,
+	// 		// the participant2 position is already filled
+	// 		if i%2 == 1 && nextMatch.Participant1ID != nil && nextMatch.Participant2ID == nil {
+	// 			// Nothing to do, participant will go to participant2 position
+	// 		}
+	// 	}
+	// }
+
+	// // Create remaining rounds (3 and up)
+	// for round := 3; round <= numRounds; round++ {
+	// 	matchesInRound := participantsPowerOfTwo / int(math.Pow(2, float64(round)))
+	// 	for i := 0; i < matchesInRound; i++ {
+	// 		match := &domain.Match{
+	// 			ID:           uuid.New(),
+	// 			TournamentID: tournamentID,
+	// 			Round:        round,
+	//        			MatchNumber:  matchCounter,
+	// 			Status:       domain.MatchPending,
+	// 		}
+
+	// 		roundMatches[round] = append(roundMatches[round], match)
+	// 		matches = append(matches, match)
+	// 		matchCounter++
+	// 	}
+
+	// 	// Link previous round matches to this round
+	// 	for i, prevMatch := range roundMatches[round-1] {
+	// 		if i/2 < len(roundMatches[round]) {
+	// 			prevMatch.NextMatchID = &roundMatches[round][i/2].ID
+	// 		}
+	// 	}
+	// }
 
 	return matches, nil
 }
