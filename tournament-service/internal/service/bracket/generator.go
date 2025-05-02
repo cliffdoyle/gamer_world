@@ -291,6 +291,16 @@ func generateMatchPositions(bracketSize int, byePositions []int) []int {
 	
 	return positions
 }
+
+func isInByes(p domain.Participant,byes []domain.Participant)bool{
+	for _,b:=range byes{
+		if b==p{
+			return true
+		}
+	}
+	return false
+}
+
 // RoundRobinGenerator implements the Generator interface for round robin tournaments
 type RoundRobinGenerator struct{}
 

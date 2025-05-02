@@ -38,7 +38,7 @@ func main() {
 	dbName := getEnvOrDefault("DB_NAME", "tournament_db")
 	serverPort := getEnvOrDefault("SERVER_PORT", "8082")
 
-	dbConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+	dbConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		dbHost, dbPort, dbUser, dbPass, dbName)
 
 	db, err := sql.Open("postgres", dbConnStr)
