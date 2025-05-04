@@ -53,7 +53,8 @@ func (g *SingleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 
 	switch format {
 	case SingleElimination:
-		return g.generateSingleElimination(ctx, tournamentID, participants)
+		matches, _, err := g.generateSingleElimination(ctx, tournamentID, participants)
+		return matches, err
 	case DoubleElimination:
 		doubleGenerator := NewDoubleEliminationGenerator()
 		return doubleGenerator.Generate(ctx, tournamentID, format, participants, options)
@@ -75,9 +76,9 @@ func (g *SingleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 }
 
 // generateSingleElimination creates a single elimination bracket
-func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant) ([]*domain.Match, error) {
+func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant) ([]*domain.Match, [][]*domain.Match, error) {
 	if len(participants) < 2 {
-		return nil, errors.New("at least 2 participants are required for a tournament")
+		return nil, nil, errors.New("at least 2 participants are required for a tournament")
 	}
 
 	// Make a copy of participants to avoid modifying the original slice
@@ -230,7 +231,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 		roundMatches[round] = currentRound
 	}
 
-	return matches, nil
+	return matches, roundMatches, nil
 }
 
 // applyChallongeSeeding arranges participants using Challonge's seeding algorithm
@@ -427,15 +428,12 @@ func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 		return participantsCopy[i].Seed < participantsCopy[j].Seed
 	})
 
-	// Calculate normalized size (next power of 2)
-	normalizedSize := calculateNormalizedSize(len(participantsCopy))
-
 	// Initialize match counter
 	matchCounter := 1
 
 	// Generate winners bracket using SingleEliminationGenerator
 	singleElimGen := &SingleEliminationGenerator{}
-	winnersBracket, err := singleElimGen.Generate(ctx, tournamentID, SingleElimination, participantsCopy, options)
+	winnersBracket, winnersBracketRounds, err := singleElimGen.generateSingleElimination(ctx, tournamentID, participantsCopy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate winners bracket: %w", err)
 	}
@@ -448,8 +446,8 @@ func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 	// Update match counter for losers bracket
 	matchCounter = len(winnersBracket) + 1
 
-	// Generate losers bracket
-	losersBracket := g.generateLosersBracket(tournamentID, normalizedSize, &matchCounter)
+	// Generate losers bracket using the winners bracket rounds
+	losersBracket := g.generateLosersBracket(tournamentID, winnersBracketRounds, &matchCounter)
 
 	// Generate grand finals matches
 	grandFinals := g.generateGrandFinals(tournamentID, &matchCounter)
@@ -472,24 +470,16 @@ func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 // generateLosersBracket creates the losers bracket matches
 func (g *DoubleEliminationGenerator) generateLosersBracket(
 	tournamentID uuid.UUID,
-	normalizedSize int,
+	winnersBracketRounds [][]*domain.Match,
 	matchCounter *int,
 ) []*domain.Match {
-	if normalizedSize <= 2 {
-		// For 2 participants, no losers bracket needed
-		return []*domain.Match{}
-	}
-
 	matches := make([]*domain.Match, 0)
 	losersBracketRounds := make([][]*domain.Match, 0)
 
-	// Calculate number of rounds in winners bracket
-	numWinnerRounds := int(math.Log2(float64(normalizedSize)))
-
-	// Process each winners round
-	for winnersRound := 1; winnersRound < numWinnerRounds; winnersRound++ {
-		// Calculate number of losers from this winners round
-		losersFromThisRound := normalizedSize / int(math.Pow(2, float64(winnersRound)))
+	// Process each winners round (except finals)
+	for winnersRound := 1; winnersRound < len(winnersBracketRounds); winnersRound++ {
+		// Get losers from this winners round
+		losersFromThisRound := len(winnersBracketRounds[winnersRound])
 
 		// Skip if no matches in this round
 		if losersFromThisRound == 0 {
@@ -511,6 +501,12 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(
 					MatchNotes:   string(LosersBracket),
 				}
 
+				// Connect losers from winners bracket to this match
+				winnersBracketRounds[winnersRound][i].LoserNextMatchID = &match.ID
+				if i+1 < losersFromThisRound {
+					winnersBracketRounds[winnersRound][i+1].LoserNextMatchID = &match.ID
+				}
+
 				currentRoundMatches = append(currentRoundMatches, match)
 				matches = append(matches, match)
 				(*matchCounter)++
@@ -529,6 +525,9 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(
 					Status:       domain.MatchPending,
 					MatchNotes:   string(LosersBracket),
 				}
+
+				// Connect loser from winners bracket to this match
+				winnersBracketRounds[winnersRound][i].LoserNextMatchID = &match.ID
 
 				// Connect winner from previous losers round if available
 				if i < len(prevLosersRound) {
@@ -574,15 +573,6 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(
 	}
 
 	return matches
-}
-
-// calculateNormalizedSize returns the next power of 2 that is greater than or equal to n
-func calculateNormalizedSize(n int) int {
-	p := 1
-	for p < n {
-		p *= 2
-	}
-	return p
 }
 
 // generateGrandFinals creates the grand finals matches and connects them properly
