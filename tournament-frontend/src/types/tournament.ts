@@ -62,4 +62,6 @@ export interface Match {
   updated_at?: string;
   bracket?: BracketType;
   isGrandFinal?: boolean;
+  match_notes?: string;
+  loser_next_match_id?: string | null;
 } 
