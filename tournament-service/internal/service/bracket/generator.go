@@ -229,65 +229,6 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 		}
 		roundMatches[round] = currentRound
 	}
-	// // Round 2 is special because some participants get byes directly to round 2
-	// matchesInRound2 := (len(participantsWithMatches) + byeCount*2) / 2
-	// for i := 0; i < matchesInRound2; i++ {
-	// 	match := &domain.Match{
-	// 		ID:           uuid.New(),
-	// 		TournamentID: tournamentID,
-	// 		Round:        2,
-	// 		MatchNumber:  matchCounter,
-	// 		Status:       domain.MatchPending,
-	// 	}
-
-	// 	// Assign participants with byes directly to round 2
-	// 	if i < len(byeParticipants) {
-	// 		match.Participant1ID = &byeParticipants[i].ID
-	// 	}
-
-	// 	roundMatches[2] = append(roundMatches[2], match)
-	// 	matches = append(matches, match)
-	// 	matchCounter++
-	// }
-
-	// // Link first round matches to second round
-	// for i, match := range roundMatches[1] {
-	// 	if i/2 < len(roundMatches[2]) {
-	// 		nextMatch := roundMatches[2][i/2]
-	// 		match.NextMatchID = &nextMatch.ID
-
-	// 		// If this is an odd-indexed match and there's a bye in the next match,
-	// 		// the participant2 position is already filled
-	// 		if i%2 == 1 && nextMatch.Participant1ID != nil && nextMatch.Participant2ID == nil {
-	// 			// Nothing to do, participant will go to participant2 position
-	// 		}
-	// 	}
-	// }
-
-	// // Create remaining rounds (3 and up)
-	// for round := 3; round <= numRounds; round++ {
-	// 	matchesInRound := participantsPowerOfTwo / int(math.Pow(2, float64(round)))
-	// 	for i := 0; i < matchesInRound; i++ {
-	// 		match := &domain.Match{
-	// 			ID:           uuid.New(),
-	// 			TournamentID: tournamentID,
-	// 			Round:        round,
-	//        			MatchNumber:  matchCounter,
-	// 			Status:       domain.MatchPending,
-	// 		}
-
-	// 		roundMatches[round] = append(roundMatches[round], match)
-	// 		matches = append(matches, match)
-	// 		matchCounter++
-	// 	}
-
-	// 	// Link previous round matches to this round
-	// 	for i, prevMatch := range roundMatches[round-1] {
-	// 		if i/2 < len(roundMatches[round]) {
-	// 			prevMatch.NextMatchID = &roundMatches[round][i/2].ID
-	// 		}
-	// 	}
-	// }
 
 	return matches, nil
 }
@@ -487,30 +428,38 @@ func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 	})
 
 	// Calculate bracket sizes based on number of participants
-	// Find the next power of 2 to determine bracket size
 	normalizedSize := nextPowerOfTwo(len(participantsCopy))
-
-	// Create matches for winners and losers brackets
-	matches := []*domain.Match{}
 	matchCounter := 1
 
-	// Generate winners bracket
-	winnersBracket := g.generateWinnersBracket(tournamentID, participantsCopy, normalizedSize, &matchCounter)
-	matches = append(matches, winnersBracket...)
+	// Generate winners bracket using SingleEliminationGenerator
+	singleElimGenerator := NewSingleEliminationGenerator()
+	winnersBracket, err := singleElimGenerator.generateSingleElimination(ctx, tournamentID, participantsCopy)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark all matches as winners bracket matches
+	for _, match := range winnersBracket {
+		match.MatchNotes = string(WinnersBracket)
+		matchCounter++
+	}
 
 	// Generate losers bracket
 	losersBracket := g.generateLosersBracket(tournamentID, normalizedSize, &matchCounter)
-	matches = append(matches, losersBracket...)
 
 	// Create grand finals matches
 	grandFinals := g.generateGrandFinals(tournamentID, &matchCounter)
+
+	// Combine all matches
+	matches := make([]*domain.Match, 0)
+	matches = append(matches, winnersBracket...)
+	matches = append(matches, losersBracket...)
 	matches = append(matches, grandFinals...)
 
 	// Link winners bracket losers to losers bracket
 	g.linkWinnersToLosers(winnersBracket, losersBracket, normalizedSize)
 
 	// Link losers bracket to grand finals
-	// The first grand finals match should be linked from both winners and losers finals
 	if len(winnersBracket) > 0 && len(losersBracket) > 0 && len(grandFinals) > 0 {
 		winnersFinalsIdx := len(winnersBracket) - 1
 		losersFinalsIdx := len(losersBracket) - 1
@@ -526,93 +475,6 @@ func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 	return matches, nil
 }
 
-// generateWinnersBracket creates the winners bracket matches
-func (g *DoubleEliminationGenerator) generateWinnersBracket(
-	tournamentID uuid.UUID,
-	participants []*domain.Participant,
-	normalizedSize int,
-	matchCounter *int,
-) []*domain.Match {
-	numRounds := int(math.Log2(float64(normalizedSize)))
-	matches := make([]*domain.Match, 0)
-
-	// Apply standard seeding pattern for participants
-	seededParticipants := applySeeding(participants, normalizedSize)
-
-	// First round setup with actual participants
-	firstRoundMatches := normalizedSize / 2
-	for i := 0; i < firstRoundMatches; i++ {
-		match := &domain.Match{
-			ID:           uuid.New(),
-			TournamentID: tournamentID,
-			Round:        1,
-			MatchNumber:  *matchCounter,
-			Status:       domain.MatchPending,
-			MatchNotes:   string(WinnersBracket),
-		}
-
-		// Assign participants if available
-		topSeedIdx := i * 2
-		bottomSeedIdx := i*2 + 1
-
-		if topSeedIdx < len(seededParticipants) && seededParticipants[topSeedIdx] != nil {
-			match.Participant1ID = &seededParticipants[topSeedIdx].ID
-		}
-
-		if bottomSeedIdx < len(seededParticipants) && seededParticipants[bottomSeedIdx] != nil {
-			match.Participant2ID = &seededParticipants[bottomSeedIdx].ID
-		}
-
-		// If only one participant is assigned, they automatically advance
-		if match.Participant1ID != nil && match.Participant2ID == nil {
-			match.Status = domain.MatchCompleted
-			match.WinnerID = match.Participant1ID
-			if match.Participant1ID != nil {
-				match.LoserID = nil
-			}
-		}
-
-		matches = append(matches, match)
-		(*matchCounter)++
-	}
-
-	// Create remaining rounds of the winners bracket
-	matchesInCurrentRound := firstRoundMatches
-	startIdx := 0
-
-	for round := 2; round <= numRounds; round++ {
-		matchesInNextRound := matchesInCurrentRound / 2
-		nextRoundStartIdx := startIdx + matchesInCurrentRound
-
-		for i := 0; i < matchesInNextRound; i++ {
-			match := &domain.Match{
-				ID:           uuid.New(),
-				TournamentID: tournamentID,
-				Round:        round,
-				MatchNumber:  *matchCounter,
-				Status:       domain.MatchPending,
-				MatchNotes:   string(WinnersBracket),
-			}
-
-			// Link previous round matches to this match
-			if startIdx+i*2 < len(matches) {
-				matches[startIdx+i*2].NextMatchID = &match.ID
-			}
-			if startIdx+i*2+1 < len(matches) {
-				matches[startIdx+i*2+1].NextMatchID = &match.ID
-			}
-
-			matches = append(matches, match)
-			(*matchCounter)++
-		}
-
-		startIdx = nextRoundStartIdx
-		matchesInCurrentRound = matchesInNextRound
-	}
-
-	return matches
-}
-
 // generateLosersBracket creates the losers bracket matches
 func (g *DoubleEliminationGenerator) generateLosersBracket(
 	tournamentID uuid.UUID,
@@ -624,78 +486,96 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(
 		return []*domain.Match{}
 	}
 
-	numWinnerRounds := int(math.Log2(float64(normalizedSize)))
-	// Losers bracket has 2*(numWinnerRounds-1) rounds
-	numLoserRounds := 2 * (numWinnerRounds - 1)
-
 	matches := make([]*domain.Match, 0)
+	losersBracketRounds := make([][]*domain.Match, 0)
 
-	// Calculate the number of matches in each round of losers bracket
-	// This uses the standard pattern for double elimination tournaments
-	matchesInRound := make([]int, numLoserRounds+1) // +1 for 1-indexed rounds
+	// Calculate number of rounds in winners bracket
+	numWinnerRounds := int(math.Log2(float64(normalizedSize)))
 
-	// First round of losers bracket has half the participants from winners round 1
-	matchesInRound[1] = normalizedSize / 4
+	// Process each winners round
+	for winnersRound := 1; winnersRound < numWinnerRounds; winnersRound++ {
+		// Calculate number of losers from this winners round
+		losersFromThisRound := normalizedSize / int(math.Pow(2, float64(winnersRound)))
 
-	// Calculate remaining rounds
-	for round := 2; round <= numLoserRounds; round++ {
-		if round%2 == 1 {
-			// Drop-in rounds - participants coming from winners bracket
-			matchesInRound[round] = normalizedSize / int(math.Pow(2, float64(round/2+1)))
-		} else {
-			// Consolidation rounds - matches between losers bracket participants
-			matchesInRound[round] = matchesInRound[round-1]
-		}
-	}
-
-	// Create matches for each round in losers bracket
-	roundStartIndex := make([]int, numLoserRounds+1)
-	currentIndex := 0
-
-	for round := 1; round <= numLoserRounds; round++ {
-		roundStartIndex[round] = currentIndex
-
-		for i := 0; i < matchesInRound[round]; i++ {
-			match := &domain.Match{
-				ID:           uuid.New(),
-				TournamentID: tournamentID,
-				Round:        round,
-				MatchNumber:  *matchCounter,
-				Status:       domain.MatchPending,
-				MatchNotes:   string(LosersBracket),
-			}
-
-			matches = append(matches, match)
-			(*matchCounter)++
+		// Skip if no matches in this round
+		if losersFromThisRound == 0 {
+			continue
 		}
 
-		currentIndex += matchesInRound[round]
-	}
+		// Create matches for losers from this round
+		currentRoundMatches := make([]*domain.Match, 0)
 
-	// Link consolidation matches (even rounds)
-	for round := 1; round < numLoserRounds; round++ {
-		if round%2 == 0 {
-			// Even rounds (consolidation) - link to next round
-			for i := 0; i < matchesInRound[round]; i++ {
-				matchIdx := roundStartIndex[round] + i
-				if round+1 <= numLoserRounds {
-					nextRoundIdx := roundStartIndex[round+1] + i/2
-					if nextRoundIdx < len(matches) {
-						matches[matchIdx].NextMatchID = &matches[nextRoundIdx].ID
-					}
+		if winnersRound == 1 {
+			// First round losers - handle odd number of players
+			for i := 0; i < losersFromThisRound; i += 2 {
+				match := &domain.Match{
+					ID:           uuid.New(),
+					TournamentID: tournamentID,
+					Round:        len(losersBracketRounds) + 1,
+					MatchNumber:  *matchCounter,
+					Status:       domain.MatchPending,
+					MatchNotes:   string(LosersBracket),
 				}
+
+				currentRoundMatches = append(currentRoundMatches, match)
+				matches = append(matches, match)
+				(*matchCounter)++
 			}
 		} else {
-			// Odd rounds (drop-in) - link to next round
-			for i := 0; i < matchesInRound[round]; i++ {
-				matchIdx := roundStartIndex[round] + i
-				if round+1 <= numLoserRounds {
-					nextRoundIdx := roundStartIndex[round+1] + i
-					if nextRoundIdx < len(matches) {
-						matches[matchIdx].NextMatchID = &matches[nextRoundIdx].ID
-					}
+			// For subsequent rounds, losers play against winners from previous losers round
+			prevLosersRound := losersBracketRounds[len(losersBracketRounds)-1]
+
+			// Create matches pairing winners bracket losers with previous losers round winners
+			for i := 0; i < losersFromThisRound; i++ {
+				match := &domain.Match{
+					ID:           uuid.New(),
+					TournamentID: tournamentID,
+					Round:        len(losersBracketRounds) + 1,
+					MatchNumber:  *matchCounter,
+					Status:       domain.MatchPending,
+					MatchNotes:   string(LosersBracket),
 				}
+
+				// Connect winner from previous losers round if available
+				if i < len(prevLosersRound) {
+					prevLosersRound[i].NextMatchID = &match.ID
+				}
+
+				currentRoundMatches = append(currentRoundMatches, match)
+				matches = append(matches, match)
+				(*matchCounter)++
 			}
+		}
+
+		losersBracketRounds = append(losersBracketRounds, currentRoundMatches)
+
+		// If we have more than one match in current round, create a consolidation round
+		if len(currentRoundMatches) > 1 {
+			consolidationMatches := make([]*domain.Match, 0)
+
+			// Create matches between winners of current round
+			for i := 0; i < len(currentRoundMatches); i += 2 {
+				match := &domain.Match{
+					ID:           uuid.New(),
+					TournamentID: tournamentID,
+					Round:        len(losersBracketRounds) + 1,
+					MatchNumber:  *matchCounter,
+					Status:       domain.MatchPending,
+					MatchNotes:   string(LosersBracket),
+				}
+
+				// Connect winners from current round
+				currentRoundMatches[i].NextMatchID = &match.ID
+				if i+1 < len(currentRoundMatches) {
+					currentRoundMatches[i+1].NextMatchID = &match.ID
+				}
+
+				consolidationMatches = append(consolidationMatches, match)
+				matches = append(matches, match)
+				(*matchCounter)++
+			}
+
+			losersBracketRounds = append(losersBracketRounds, consolidationMatches)
 		}
 	}
 
@@ -760,8 +640,7 @@ func (g *DoubleEliminationGenerator) linkWinnersToLosers(
 	numWinnerRounds := int(math.Log2(float64(normalizedSize)))
 	for winnerRound := 1; winnerRound < numWinnerRounds; winnerRound++ {
 		// Calculate which losers round receives these losers
-		// Standard mapping: losers from winner's round N go to loser's round (2N-1)
-		loserRound := 2*winnerRound - 1
+		loserRound := len(loserRoundMatches) // Use the current round number in losers bracket
 
 		// Skip if no matches in this winner round or target loser round
 		if len(winnerRoundMatches[winnerRound]) == 0 || len(loserRoundMatches[loserRound]) == 0 {
@@ -771,14 +650,20 @@ func (g *DoubleEliminationGenerator) linkWinnersToLosers(
 		// Map losers based on their position
 		loserMatchCount := len(loserRoundMatches[loserRound])
 
-		// If the number of winner matches doesn't align with loser matches,
-		// we need to distribute appropriately
-		for i, winnerMatch := range winnerRoundMatches[winnerRound] {
-			// Calculate destination in losers bracket
-			loserMatchIdx := i % loserMatchCount
-
-			// Link the loser to the appropriate losers bracket match
-			winnerMatch.LoserNextMatchID = &loserRoundMatches[loserRound][loserMatchIdx].ID
+		// Handle first round specially (pairing losers together)
+		if winnerRound == 1 {
+			for i, winnerMatch := range winnerRoundMatches[winnerRound] {
+				loserMatchIdx := i / 2 // Two losers per match in first round
+				if loserMatchIdx < loserMatchCount {
+					winnerMatch.LoserNextMatchID = &loserRoundMatches[loserRound][loserMatchIdx].ID
+				}
+			}
+		} else {
+			// For subsequent rounds, distribute losers to available matches
+			for i, winnerMatch := range winnerRoundMatches[winnerRound] {
+				loserMatchIdx := i % loserMatchCount
+				winnerMatch.LoserNextMatchID = &loserRoundMatches[loserRound][loserMatchIdx].ID
+			}
 		}
 	}
 }
