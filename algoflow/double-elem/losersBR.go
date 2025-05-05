@@ -32,42 +32,60 @@ func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 }
 
 // generateLosersBracket creates the losers bracket portion of a double elimination tournament
+// generateLosersBracket creates the losers bracket portion of a double elimination tournament
 func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, tournamentID uuid.UUID, winnersBracketRounds [][]*domain.Match) ([]*domain.Match, *domain.Match, error) {
+	// Add debugging
+	fmt.Println("Starting losers bracket generation...")
+	fmt.Printf("Winners bracket rounds: %d\n", len(winnersBracketRounds))
+	
 	matches := make([]*domain.Match, 0)
 	matchCounter := 1000 // Start losers bracket with a different counter
 
 	// Initialize losers bracket rounds
 	losersBracketRounds := make([][]*domain.Match, 0)
 
-	//keep track of "waiting" losers that haven't been assigned to a match yet
-	waitingLosers:=make([]uuid.UUID,0)
+	// Keep track of "waiting" losers that haven't been assigned to a match yet
+	waitingLosers := make([]uuid.UUID, 0)
 
 	// Process losers from each winners round
 	for winnersRound := 1; winnersRound < len(winnersBracketRounds); winnersRound++ {
+		fmt.Printf("Processing winners round %d\n", winnersRound)
+		
 		// Get losers from this winners round
-		losersFromThisRound := make([]uuid.UUID,0)
+		losersFromThisRound := make([]uuid.UUID, 0)
 
-		for _,match:=range winnersBracketRounds[winnersRound-1]{
-			if match.Participant1ID !=nil && match.Participant2ID !=nil{
-				//Only count actual matches with two players(not byes)
-				losersFromThisRound=append(losersFromThisRound, uuid.Nil)
+		// Make sure we're checking the previous round's matches
+		previousRoundMatches := winnersBracketRounds[winnersRound-1]
+		fmt.Printf("Previous round has %d matches\n", len(previousRoundMatches))
+		
+		for i, match := range previousRoundMatches {
+			// Check if the match has BOTH players assigned
+			// Adjust field names to match your actual struct
+			if match.Participant1ID != nil && match.Participant2ID != nil {
+				// Only count actual matches with two players (not byes)
+				fmt.Printf("Match %d has two players, adding a loser\n", i)
+				losersFromThisRound = append(losersFromThisRound, uuid.Nil)
+			} else {
+				fmt.Printf("Match %d doesn't have two players, skipping\n", i)
 			}
 		}
 
-		// Skip if no matches in this round
+		// Skip if no losers in this round
 		if len(losersFromThisRound) == 0 {
+			fmt.Println("No losers in this round, continuing")
 			continue
 		}
 
-		//Add these losers to our waiting pool
-		waitingLosers=append(waitingLosers, losersFromThisRound...)
+		// Add these losers to our waiting pool
+		fmt.Printf("Adding %d losers to waiting pool\n", len(losersFromThisRound))
+		waitingLosers = append(waitingLosers, losersFromThisRound...)
 
-		// Create matches for losers from this round according to the standard double elimination pattern
-
+		// Create matches for losers according to the standard double elimination pattern
 		currentRoundMatches := make([]*domain.Match, 0)
 
 		if winnersRound == 1 {
-			// First round losers - pair them up,handling odd number of players
+			fmt.Println("Processing first round losers")
+			// First round losers - pair them up, handling odd number of players
 			for i := 0; i < len(waitingLosers); i += 2 {
 				match := &domain.Match{
 					ID:           uuid.New(),
@@ -77,19 +95,20 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 					Status:       domain.MatchPending,
 				}
 
-				//Connect first loser to this match
-				winnerIndex:=i/2
+				// Connect first loser to this match
+				winnerIndex := i / 2
 				// Connect loser from winners bracket to this match
-				if winnerIndex < len(winnersBracketRounds[winnersRound-1]){
-					winnersBracketRounds[winnersRound-1][winnerIndex].LoserNextMatchID=&match.ID
+				if winnerIndex < len(previousRoundMatches) {
+					fmt.Printf("Connecting loser from winners match %d to losers match %d\n", winnerIndex, matchCounter)
+					previousRoundMatches[winnerIndex].LoserNextMatchID = &match.ID
 				}
-				// winnersBracketRounds[winnersRound][i].LoserNextMatchID = &match.ID
 
 				// If we have a second loser for this match
-				if i+1<len(waitingLosers){
-					winnerIndex=(i+1)/2
-					if winnerIndex<len(winnersBracketRounds[winnersRound-1]){
-						winnersBracketRounds[winnersRound-1][winnerIndex].LoserNextMatchID=&match.ID
+				if i+1 < len(waitingLosers) {
+					winnerIndex = (i+1) / 2
+					if winnerIndex < len(previousRoundMatches) {
+						fmt.Printf("Connecting second loser from winners match %d to losers match %d\n", winnerIndex, matchCounter)
+						previousRoundMatches[winnerIndex].LoserNextMatchID = &match.ID
 					}
 				}
 
@@ -97,20 +116,18 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 				matches = append(matches, match)
 				matchCounter++
 			}
-			//clear the waiting losers as they've been assigned
-			waitingLosers=nil
-		} else if len(losersBracketRounds)>0{
+			// Clear the waiting losers as they've been assigned
+			waitingLosers = nil
+		} else if len(losersBracketRounds) > 0 {
+			fmt.Println("Processing subsequent round losers")
 			// For subsequent rounds, losers play against winners from previous losers round
-			 // Handle the special double elimination pattern
-            // First, every other winner from the previous losers round plays against a dropper
-            // Then, the remaining winners play against each other
 			prevLosersRound := losersBracketRounds[len(losersBracketRounds)-1]
+			fmt.Printf("Previous losers round has %d matches\n", len(prevLosersRound))
 
-			// Create matches pairing winners bracket losers with previous losers round winners
-
-			//Step 1: Match losers from winners bracket with winners from previous 
-			//losers round
-			matchesNeeded:=min(len(waitingLosers),len(prevLosersRound))
+			// Step 1: Match losers from winners bracket with winners from previous losers round
+			matchesNeeded := min(len(waitingLosers), len(prevLosersRound))
+			fmt.Printf("Creating %d matches for losers vs previous winners\n", matchesNeeded)
+			
 			for i := 0; i < matchesNeeded; i++ {
 				match := &domain.Match{
 					ID:           uuid.New(),
@@ -121,12 +138,15 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 				}
 
 				// Connect loser from winners bracket to this match
-				if i<len(winnersBracketRounds[winnersRound-1]){
-					winnersBracketRounds[winnersRound][i].LoserNextMatchID = &match.ID
+				// IMPORTANT: Fix the index here, use winnersRound-1
+				if i < len(previousRoundMatches) {
+					fmt.Printf("Connecting loser from winners match %d to losers match %d\n", i, matchCounter)
+					previousRoundMatches[i].LoserNextMatchID = &match.ID
 				}
 
 				// Connect winner from previous losers round if available
 				if i < len(prevLosersRound) {
+					fmt.Printf("Connecting winner from previous losers match %d to losers match %d\n", i, matchCounter)
 					prevLosersRound[i].NextMatchID = &match.ID
 				}
 
@@ -135,19 +155,25 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 				matchCounter++
 			}
 
-			if len(waitingLosers)>matchesNeeded{
-				waitingLosers=waitingLosers[matchesNeeded:]
-			}else{
-				waitingLosers=nil
+			// Remove the used losers
+			if len(waitingLosers) > matchesNeeded {
+				waitingLosers = waitingLosers[matchesNeeded:]
+				fmt.Printf("%d losers remaining in waiting pool\n", len(waitingLosers))
+			} else {
+				waitingLosers = nil
+				fmt.Println("All losers assigned, clearing waiting pool")
 			}
 		}
-		//Add current round to losers bracket rounds
-		if len(currentRoundMatches)>0{
+		
+		// Add current round to losers bracket rounds
+		if len(currentRoundMatches) > 0 {
+			fmt.Printf("Adding round with %d matches to losers bracket\n", len(currentRoundMatches))
 			losersBracketRounds = append(losersBracketRounds, currentRoundMatches)
 		}
 
 		// If we have more than one match in current round, create a consolidation round
 		if len(currentRoundMatches) > 1 {
+			fmt.Println("Creating consolidation round")
 			consolidationMatches := make([]*domain.Match, 0)
 
 			// Create matches between winners of current round
@@ -161,10 +187,12 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 				}
 
 				// Connect winners from current round
+				fmt.Printf("Connecting winner from losers match %d to consolidation match %d\n", currentRoundMatches[i].MatchNumber, matchCounter)
 				currentRoundMatches[i].NextMatchID = &match.ID
 
-				//Connect second winner if available
+				// Connect second winner if available
 				if i+1 < len(currentRoundMatches) {
+					fmt.Printf("Connecting second winner from losers match %d to consolidation match %d\n", currentRoundMatches[i+1].MatchNumber, matchCounter)
 					currentRoundMatches[i+1].NextMatchID = &match.ID
 				}
 
@@ -172,21 +200,24 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 				matches = append(matches, match)
 				matchCounter++
 			}
-			if len(consolidationMatches)>0{
+			
+			if len(consolidationMatches) > 0 {
+				fmt.Printf("Adding consolidation round with %d matches\n", len(consolidationMatches))
 				losersBracketRounds = append(losersBracketRounds, consolidationMatches)
 			}
 		}
 	}
 
-	//Connect any remaining matches to form the losers bracket
-	for i:=0;i<len(losersBracketRounds)-1;i++{
-		currentRound:=losersBracketRounds[i]
-		nextRound:=losersBracketRounds[i+1]
+	// Connect any remaining matches to form the losers bracket
+	for i := 0; i < len(losersBracketRounds)-1; i++ {
+		currentRound := losersBracketRounds[i]
+		nextRound := losersBracketRounds[i+1]
 
-		//Connect matches in the current round to the next round
-		for j,match:=range currentRound{
-			if match.NextMatchID==nil && j/2<len(nextRound){
-				match.NextMatchID=&nextRound[j/2].ID
+		// Connect matches in the current round to the next round
+		for j, match := range currentRound {
+			if match.NextMatchID == nil && j/2 < len(nextRound) {
+				fmt.Printf("Connecting match %d to next round match %d\n", match.MatchNumber, nextRound[j/2].MatchNumber)
+				match.NextMatchID = &nextRound[j/2].ID
 			}
 		}
 	}
@@ -195,9 +226,21 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 	var losersFinalMatch *domain.Match
 	if len(losersBracketRounds) > 0 && len(losersBracketRounds[len(losersBracketRounds)-1]) > 0 {
 		losersFinalMatch = losersBracketRounds[len(losersBracketRounds)-1][0]
+		fmt.Printf("Final losers match: %s (Match %d)\n", losersFinalMatch.ID, losersFinalMatch.MatchNumber)
+	} else {
+		fmt.Println("No final match in losers bracket")
 	}
 
+	fmt.Printf("Created %d total matches in losers bracket\n", len(matches))
 	return matches, losersFinalMatch, nil
+}
+
+// Helper function to get the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // generateGrandFinals creates the grand finals match(es) for a double elimination tournament

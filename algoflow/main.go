@@ -29,7 +29,7 @@ func main() {
 
 	// Call the Generate function
 
-	winnersBracketMatches, WinnersBracketRound, err := generator.Generate(ctx, tournamentID, doubleelem.SingleElimination, participants, nil)
+	_, WinnersBracketRound, err := generator.Generate(ctx, tournamentID, doubleelem.SingleElimination, participants, nil)
 	if err != nil {
 		log.Fatalf("Error generating bracket: %v", err)
 	}
@@ -54,18 +54,18 @@ func main() {
 		fmt.Println("No final match in losers bracket.")
 	}
 
-	// Print matches
-	fmt.Println("All Matches in winners bracket:........")
-	for _, match := range winnersBracketMatches {
-		fmt.Printf("Match %d (Round %d): %v vs %v\n", match.MatchNumber, match.Round, match.Participant1ID, match.Participant2ID)
-	}
+	// // Print matches
+	// fmt.Println("All Matches in winners bracket:........")
+	// for _, match := range winnersBracketMatches {
+	// 	fmt.Printf("Match %d (Round %d): %v vs %v\n", match.MatchNumber, match.Round, match.Participant1ID, match.Participant2ID)
+	// }
 
-	// Print matches grouped by rounds
-	fmt.Println("\nMatches by Round:")
-	for roundNum, round := range WinnersBracketRound {
-		fmt.Printf("Round %d:\n", roundNum)
-		for _, match := range round {
-			fmt.Printf("  Match %d: %v vs %v\n", match.MatchNumber, match.Participant1ID, match.Participant2ID)
-		}
-	}
+	// // Print matches grouped by rounds
+	// fmt.Println("\nMatches by Round:")
+	// for roundNum, round := range WinnersBracketRound {
+	// 	fmt.Printf("Round %d:\n", roundNum)
+	// 	for _, match := range round {
+	// 		fmt.Printf("  Match %d: %v vs %v\n", match.MatchNumber, match.Participant1ID, match.Participant2ID)
+	// 	}
+	// }
 }
