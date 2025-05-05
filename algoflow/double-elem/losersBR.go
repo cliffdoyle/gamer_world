@@ -61,13 +61,16 @@ func (g *DoubleEliminationGenerator) generateLosersBracket(ctx context.Context, 
 		for i, match := range previousRoundMatches {
 			// Check if the match has BOTH players assigned
 			// Adjust field names to match your actual struct
-			if match.Participant1ID != nil && match.Participant2ID != nil {
-				// Only count actual matches with two players (not byes)
-				fmt.Printf("Match %d has two players, adding a loser\n", i)
-				losersFromThisRound = append(losersFromThisRound, uuid.Nil)
+			if match.WinnerID != nil {
+				if *match.WinnerID == *match.Participant1ID {
+					losersFromThisRound = append(losersFromThisRound, *match.Participant2ID)
+				} else {
+					losersFromThisRound = append(losersFromThisRound, *match.Participant1ID)
+				}
 			} else {
-				fmt.Printf("Match %d doesn't have two players, skipping\n", i)
+				fmt.Printf("Match %d doesn't have a winner yet, skipping loser assignment\n", i)
 			}
+			
 		}
 
 		// Skip if no losers in this round
