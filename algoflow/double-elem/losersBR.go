@@ -1,13 +1,11 @@
-package bracket
+package doubleelem
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"math"
-	"sort"
 
-	"github.com/cliffdoyle/tournament-service/internal/domain"
+	"algoflow/domain"
+
 	"github.com/google/uuid"
 )
 
@@ -19,206 +17,18 @@ func NewDoubleEliminationGenerator() *DoubleEliminationGenerator {
 	return &DoubleEliminationGenerator{}
 }
 
-// Generate implements the Generator interface for double elimination format
-func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID uuid.UUID, format Format, participants []*domain.Participant, options map[string]interface{}) ([]*domain.Match, error) {
-	if len(participants) < 2 {
-		return nil, errors.New("at least 2 participants are required for a tournament")
+// Generate implements the Generator interface
+func (g *DoubleEliminationGenerator) Generate(ctx context.Context, tournamentID uuid.UUID, format Format, winnersBracketRounds [][]*domain.Match, options map[string]interface{}) ([]*domain.Match, *domain.Match, error) {
+	// if len(participants) < 2 {
+	// 	return nil, nil, errors.New("at least 2 participants are required for a tournament")
+	// }
+
+	switch format {
+	case DoubleElimination:
+		return g.generateLosersBracket(ctx, tournamentID, winnersBracketRounds)
+	default:
+		return nil, nil, fmt.Errorf("unsupported tournament format: %s", format)
 	}
-
-	// Default to true if not specified
-	resetBracket := true
-	if val, ok := options["resetBracket"].(bool); ok {
-		resetBracket = val
-	}
-
-	return g.generateDoubleElimination(ctx, tournamentID, participants, resetBracket)
-}
-
-// generateDoubleElimination creates a double elimination bracket
-func (g *DoubleEliminationGenerator) generateDoubleElimination(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant, resetBracket bool) ([]*domain.Match, error) {
-	// Generate winners bracket using SingleEliminationGenerator
-	singleElimGenerator := NewSingleEliminationGenerator()
-	winnersBracketMatches, roundMatches, err := g.generateWinnersBracket(ctx, tournamentID, participants)
-	if err != nil {
-		return nil, err
-	}
-
-	// Generate losers bracket based on winners bracket
-	losersBracketMatches, losersFinalMatch, err := g.generateLosersBracket(ctx, tournamentID, roundMatches)
-	if err != nil {
-		return nil, err
-	}
-
-	// Generate grand finals
-	grandFinalsMatches, err := g.generateGrandFinals(ctx, tournamentID, winnersBracketMatches[len(winnersBracketMatches)-1], losersFinalMatch, resetBracket)
-	if err != nil {
-		return nil, err
-	}
-
-	// Combine all matches
-	allMatches := make([]*domain.Match, 0)
-	allMatches = append(allMatches, winnersBracketMatches...)
-	allMatches = append(allMatches, losersBracketMatches...)
-	allMatches = append(allMatches, grandFinalsMatches...)
-
-	return allMatches, nil
-}
-
-// generateWinnersBracket creates the winners bracket portion of a double elimination tournament
-// Returns the list of all matches, and a 2D slice of matches organized by round
-func (g *DoubleEliminationGenerator) generateWinnersBracket(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant) ([]*domain.Match, [][]*domain.Match, error) {
-	if len(participants) < 2 {
-		return nil, nil, errors.New("at least 2 participants are required for a tournament")
-	}
-
-	// Make a copy of participants to avoid modifying the original slice
-	participantsCopy := make([]*domain.Participant, len(participants))
-	copy(participantsCopy, participants)
-
-	// Sort participants by seed
-	sort.Slice(participantsCopy, func(i, j int) bool {
-		return participantsCopy[i].Seed < participantsCopy[j].Seed
-	})
-
-	// Calculate the number of rounds needed
-	numParticipants := len(participantsCopy)
-	numRounds := int(math.Ceil(math.Log2(float64(numParticipants))))
-	participantsPowerOfTwo := nextPowerOfTwo(numParticipants)
-
-	// Create matches list
-	matches := make([]*domain.Match, 0)
-	matchCounter := 1
-
-	// Apply Challonge-style seeding
-	seededParticipants := applyChallongeSeeding(participantsCopy, participantsPowerOfTwo)
-
-	// Initialize arrays to track matches in each round
-	roundMatches := make([][]*domain.Match, numRounds+1)
-	for i := 0; i <= numRounds; i++ {
-		roundMatches[i] = make([]*domain.Match, 0)
-	}
-
-	// Calculate byes
-	byeCount := participantsPowerOfTwo - numParticipants
-
-	// Process participants who get byes first (no first round match)
-	byeParticipants := make([]*domain.Participant, 0, byeCount)
-	for i := 0; i < byeCount*2; i += 2 {
-		if i < len(seededParticipants) && seededParticipants[i] != nil {
-			byeParticipants = append(byeParticipants, seededParticipants[i])
-		}
-	}
-
-	// Create first round matches for remaining participants
-	participantsWithMatches := make([]*domain.Participant, 0, numParticipants-byeCount)
-	for i := 0; i < len(seededParticipants); i++ {
-		if !isInByes(seededParticipants[i], byeParticipants) && seededParticipants[i] != nil {
-			participantsWithMatches = append(participantsWithMatches, seededParticipants[i])
-		}
-	}
-
-	// Create matches for those who don't have byes
-	for i := 0; i < len(participantsWithMatches); i += 2 {
-		match := &domain.Match{
-			ID:           uuid.New(),
-			TournamentID: tournamentID,
-			Round:        1,
-			MatchNumber:  matchCounter,
-			Status:       domain.MatchPending,
-		}
-
-		if i < len(participantsWithMatches) {
-			participant1 := participantsWithMatches[i]
-			match.Participant1ID = &participant1.ID
-		}
-
-		if i+1 < len(participantsWithMatches) {
-			participant2 := participantsWithMatches[i+1]
-			match.Participant2ID = &participant2.ID
-		}
-
-		roundMatches[1] = append(roundMatches[1], match)
-		matches = append(matches, match)
-		matchCounter++
-	}
-
-	// Round 2
-	// Add byes participant already in round 2 and the winners of round 1
-	var round2Participants []interface{}
-
-	// Add the byes participants to the interface
-	for _, p := range byeParticipants {
-		round2Participants = append(round2Participants, p)
-	}
-
-	// Now we add round 1 winners
-	for i := range roundMatches[1] {
-		round2Participants = append(round2Participants, roundMatches[1][i])
-	}
-
-	// Generate matches for round 2
-	for i := 0; i < len(round2Participants); i += 2 {
-		m := &domain.Match{
-			ID:           uuid.New(),
-			TournamentID: tournamentID,
-			Round:        2,
-			MatchNumber:  matchCounter,
-			Status:       domain.MatchPending,
-		}
-
-		// Get player 1
-		switch v := round2Participants[i].(type) {
-		case *domain.Participant:
-			m.Participant1ID = &v.ID
-		case *domain.Match:
-			v.NextMatchID = &m.ID
-		}
-
-		// Getting player 2 now
-		if i+1 < len(round2Participants) {
-			switch v := round2Participants[i+1].(type) {
-			case *domain.Participant:
-				m.Participant2ID = &v.ID
-			case *domain.Match:
-				v.NextMatchID = &m.ID
-			}
-		}
-		roundMatches[2] = append(roundMatches[2], m)
-		matches = append(matches, m)
-		matchCounter++
-	}
-
-	// Subsequent matches after round 2
-	for round := 3; round <= numRounds; round++ {
-		prevRoundMatches := roundMatches[round-1]
-		currentRound := make([]*domain.Match, 0)
-
-		for i := 0; i < len(prevRoundMatches); i += 2 {
-			match := &domain.Match{
-				ID:           uuid.New(),
-				TournamentID: tournamentID,
-				Round:        round,
-				MatchNumber:  matchCounter,
-				Status:       domain.MatchPending,
-			}
-
-			// Set forward links in previous matches
-			if i < len(prevRoundMatches) {
-				prevRoundMatches[i].NextMatchID = &match.ID
-			}
-
-			if i+1 < len(prevRoundMatches) {
-				prevRoundMatches[i+1].NextMatchID = &match.ID
-			}
-
-			currentRound = append(currentRound, match)
-			matches = append(matches, match)
-			matchCounter++
-		}
-		roundMatches[round] = currentRound
-	}
-
-	return matches, roundMatches, nil
 }
 
 // generateLosersBracket creates the losers bracket portion of a double elimination tournament

@@ -1,11 +1,12 @@
 package main
 
 import (
-	"algoflow/domain"
-	"algoflow/double-elem"
 	"context"
 	"fmt"
-	"math"
+	"log"
+
+	"algoflow/domain"
+	doubleelem "algoflow/double-elem"
 
 	"github.com/google/uuid"
 )
@@ -21,29 +22,50 @@ func main() {
 		{ID: uuid.New(), ParticipantName: "Player 7"},
 	}
 	ctx := context.Background()
+	generator := doubleelem.NewSingleEliminationGenerator()
+
+	// dummy tournament
 	tournamentID := uuid.New()
-	generator := double.NewSingleEliminationGenerator()
-	winners, err := generator.Generate(ctx, tournamentID, double.SingleElimination, participants, nil)
+
+	// Call the Generate function
+
+	winnersBracketMatches, WinnersBracketRound, err := generator.Generate(ctx, tournamentID, doubleelem.SingleElimination, participants, nil)
 	if err != nil {
-		fmt.Println("Error generating single elimination:", err)
+		log.Fatalf("Error generating bracket: %v", err)
 	}
 
-	for _, winner := range winners {
-		for _, participant := range winner.Participants {
-			fmt.Println(participant.ID, participant.ParticipantName, winner.Round)
-		}
-		// fmt.Println(winner.ID, winner.Round)
-	}
-	fmt.Println("losers section")
+	generatorDoubleelem := doubleelem.NewDoubleEliminationGenerator()
 
-	losers := double.GenerateLosersBracket(winners)
-	for _, loser := range losers {
-		for _, participant := range loser.Participants {
-			fmt.Println(participant.ID, participant.ParticipantName, loser.Round)
-		}
-		// fmt.Println(loser.ID, loser.Round)
+	losersMatches, finalMatch, err := generatorDoubleelem.Generate(ctx, tournamentID, doubleelem.DoubleElimination, WinnersBracketRound, nil)
+	if err != nil {
+		log.Fatalf("Error generating bracket: %v", err)
 	}
-	numParticipants := 9
-	numRounds := int(math.Ceil(math.Log2(float64(numParticipants))))
-	fmt.Println("Number of rounds:", numRounds)
+
+	// LOsers bracket matches
+	fmt.Println("LOsers Bracket Matches:")
+
+	for _, m := range losersMatches {
+		fmt.Printf("Match ID: %s, Round: %d, Match Number: %d\n", m.ID, m.Round, m.MatchNumber)
+	}
+
+	if finalMatch != nil {
+		fmt.Println("Final Losers Match:", finalMatch.ID)
+	} else {
+		fmt.Println("No final match in losers bracket.")
+	}
+
+	// Print matches
+	fmt.Println("All Matches in winners bracket:........")
+	for _, match := range winnersBracketMatches {
+		fmt.Printf("Match %d (Round %d): %v vs %v\n", match.MatchNumber, match.Round, match.Participant1ID, match.Participant2ID)
+	}
+
+	// Print matches grouped by rounds
+	fmt.Println("\nMatches by Round:")
+	for roundNum, round := range WinnersBracketRound {
+		fmt.Printf("Round %d:\n", roundNum)
+		for _, match := range round {
+			fmt.Printf("  Match %d: %v vs %v\n", match.MatchNumber, match.Participant1ID, match.Participant2ID)
+		}
+	}
 }

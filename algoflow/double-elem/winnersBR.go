@@ -1,4 +1,4 @@
-package double
+package doubleelem
 
 import (
 	"context"
@@ -47,38 +47,23 @@ func NewSingleEliminationGenerator() *SingleEliminationGenerator {
 }
 
 // Generate implements the Generator interface
-func (g *SingleEliminationGenerator) Generate(ctx context.Context, tournamentID uuid.UUID, format Format, participants []*domain.Participant, options map[string]interface{}) ([]*domain.Match, error) {
+func (g *SingleEliminationGenerator) Generate(ctx context.Context, tournamentID uuid.UUID, format Format, participants []*domain.Participant, options map[string]interface{}) ([]*domain.Match,[][]*domain.Match, error) {
 	if len(participants) < 2 {
-		return nil, errors.New("at least 2 participants are required for a tournament")
+		return nil,nil, errors.New("at least 2 participants are required for a tournament")
 	}
 
 	switch format {
 	case SingleElimination:
 		return g.generateSingleElimination(ctx, tournamentID, participants)
-	// case DoubleElimination:
-	// 	doubleGenerator := NewDoubleEliminationGenerator()
-	// 	return doubleGenerator.Generate(ctx, tournamentID, format, participants, options)
-	// case RoundRobin:
-	// 	roundRobinGenerator := NewRoundRobinGenerator()
-	// 	return roundRobinGenerator.Generate(ctx, tournamentID, format, participants, options)
-	// case Swiss:
-	// 	rounds := 0
-	// 	if r, ok := options["rounds"].(int); ok {
-	// 		rounds = r
-	// 	}
-	// 	if rounds <= 0 {
-	// 		rounds = int(math.Ceil(math.Log2(float64(len(participants)))))
-	// 	}
-	// 	return g.generateSwiss(ctx, tournamentID, participants, rounds)
 	default:
-		return nil, fmt.Errorf("unsupported tournament format: %s", format)
+		return nil,nil, fmt.Errorf("unsupported tournament format: %s", format)
 	}
 }
 
 // generateSingleElimination creates a single elimination bracket
-func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant) ([]*domain.Match, error) {
+func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant) ([]*domain.Match,[][]*domain.Match, error) {
 	if len(participants) < 2 {
-		return nil, errors.New("at least 2 participants are required for a tournament")
+		return nil,nil, errors.New("at least 2 participants are required for a tournament")
 	}
 
 	// Make a copy of participants to avoid modifying the original slice
@@ -244,7 +229,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 		roundMatches[round] = currentRound
 	}
 
-	return matches, nil
+	return matches,roundMatches, nil
 }
 
 // applyChallongeSeeding arranges participants using Challonge's seeding algorithm
