@@ -76,9 +76,11 @@ func (g *SingleEliminationGenerator) Generate(ctx context.Context, tournamentID 
 }
 
 // generateSingleElimination creates a single elimination bracket
-func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant) ([]*domain.Match, [][]*domain.Match, error) {
+
+// generateSingleElimination creates a single elimination bracket
+func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Context, tournamentID uuid.UUID, participants []*domain.Participant) ([]*domain.Match,[][]*domain.Match, error) {
 	if len(participants) < 2 {
-		return nil, nil, errors.New("at least 2 participants are required for a tournament")
+		return nil,nil, errors.New("at least 2 participants are required for a tournament")
 	}
 
 	// Make a copy of participants to avoid modifying the original slice
@@ -108,102 +110,143 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 		roundMatches[i] = make([]*domain.Match, 0)
 	}
 
-	// Calculate number of byes
+	// Generate first round matches
+	// The key difference: we only create matches for actual participants with no "TBD" placeholders
+	// firstRoundMatchCount := numParticipants / 2
 	byeCount := participantsPowerOfTwo - numParticipants
 
-	// First round matches needed (excluding byes)
-	firstRoundMatchCount := (numParticipants - byeCount) / 2
+	// Process participants who get byes first (no first round match)
+	byeParticipants := make([]*domain.Participant, 0, byeCount)
+	for i := 0; i < byeCount*2; i += 2 {
+		if i < len(seededParticipants) && seededParticipants[i] != nil {
+			byeParticipants = append(byeParticipants, seededParticipants[i])
+		}
+	}
 
-	// Create first round matches
-	for i := 0; i < firstRoundMatchCount*2; i += 2 {
+	// Create first round matches for remaining participants
+	participantsWithMatches := make([]*domain.Participant, 0, numParticipants-byeCount)
+	for i := 0; i < len(seededParticipants); i++ {
+		if !isInByes(seededParticipants[i], byeParticipants) && seededParticipants[i] != nil {
+			participantsWithMatches = append(participantsWithMatches, seededParticipants[i])
+		}
+	}
+	// match1Participants := make([]*domain.Participant, 0, len(participantsWithMatches))
+	// Create matches for those who don't have byes
+	for i := 0; i < len(participantsWithMatches); i += 2 {
 		match := &domain.Match{
 			ID:           uuid.New(),
 			TournamentID: tournamentID,
 			Round:        1,
 			MatchNumber:  matchCounter,
 			Status:       domain.MatchPending,
-			MatchNotes:   fmt.Sprintf("Match %d", matchCounter),
+			// Participants: match1Participants,
 		}
 
-		if i < len(seededParticipants) && seededParticipants[i] != nil {
-			match.Participant1ID = &seededParticipants[i].ID
+		if i < len(participantsWithMatches) {
+			participant1 := participantsWithMatches[i]
+			match.Participant1ID = &participant1.ID
+			// match1Participants = append(match1Participants, participant1)
 		}
 
-		if i+1 < len(seededParticipants) && seededParticipants[i+1] != nil {
-			match.Participant2ID = &seededParticipants[i+1].ID
+		if i+1 < len(participantsWithMatches) {
+			participant2 := participantsWithMatches[i+1]
+			match.Participant2ID = &participant2.ID
+			// match1Participants = append(match1Participants, participant2)
 		}
 
 		roundMatches[1] = append(roundMatches[1], match)
 		matches = append(matches, match)
+		// match.Participants = match1Participants
 		matchCounter++
 	}
 
-	// Handle players with byes
-	byeParticipants := seededParticipants[firstRoundMatchCount*2:]
-	round2Matches := len(roundMatches[1]) + len(byeParticipants)
-	round2MatchCount := round2Matches / 2
+	// Round 2
+	//Add byes participant already in round 2 and the winners of round 1
+	//we put the two different categories in an interface slice
+	var round2Participants []interface{}
 
-	// Create second round matches
-	for i := 0; i < round2MatchCount; i++ {
-		match := &domain.Match{
+	//Add the byes participants to the interface
+	for _, p := range byeParticipants {
+		round2Participants = append(round2Participants, p)
+	}
+
+	//now we add round 1 winners
+	for i := range roundMatches[1] {
+		round2Participants = append(round2Participants, roundMatches[1][i])
+	}
+
+	//Resolve actual participants
+	// realparticipants := getParticipantsFromMixedSlice(round2Participants, participantsCopy)
+	//generate matches for round 2
+	for i := 0; i < len(round2Participants); i += 2 {
+		m := &domain.Match{
 			ID:           uuid.New(),
 			TournamentID: tournamentID,
 			Round:        2,
 			MatchNumber:  matchCounter,
 			Status:       domain.MatchPending,
-			MatchNotes:   fmt.Sprintf("Match %d", matchCounter),
+			// Participants: realparticipants,
 		}
 
-		// If this position should get a bye participant
-		if i < len(byeParticipants) && byeParticipants[i] != nil {
-			match.Participant1ID = &byeParticipants[i].ID
-			match.MatchNotes += " (Bye)"
+		//get player 1
+		switch v := round2Participants[i].(type) {
+		case *domain.Participant:
+			m.Participant1ID = &v.ID
+		case *domain.Match:
+			v.NextMatchID = &m.ID
 		}
 
-		roundMatches[2] = append(roundMatches[2], match)
-		matches = append(matches, match)
+		//getting player 2 now
+		if i+1 < len(round2Participants) {
+			switch v := round2Participants[i+1].(type) {
+			case *domain.Participant:
+				m.Participant2ID = &v.ID
+			case *domain.Match:
+				v.NextMatchID = &m.ID
+			}
+		}
+		roundMatches[2] = append(roundMatches[2], m)
+		matches = append(matches, m)
 		matchCounter++
 	}
 
-	// Connect first round matches to second round
-	for i, firstRoundMatch := range roundMatches[1] {
-		targetMatch := roundMatches[2][i/2]
-		firstRoundMatch.NextMatchID = &targetMatch.ID
-		firstRoundMatch.MatchNotes += fmt.Sprintf(" -> Winner to Match %d", targetMatch.MatchNumber)
-	}
-
-	// Create subsequent round matches
+	//subsequent matches after one, loop numround times from 2
 	for round := 3; round <= numRounds; round++ {
 		prevRoundMatches := roundMatches[round-1]
-		currentRoundMatchCount := len(prevRoundMatches) / 2
+		var mixedInput []interface{}
+		for _, match := range prevRoundMatches {
+			mixedInput = append(mixedInput, match)
+		}
+		// newParticipants := getParticipantsFromMixedSlice(mixedInput, participantsCopy)
+		currentRound := make([]*domain.Match, 0)
 
-		for i := 0; i < currentRoundMatchCount; i++ {
+		for i := 0; i < len(prevRoundMatches); i += 2 {
 			match := &domain.Match{
 				ID:           uuid.New(),
 				TournamentID: tournamentID,
 				Round:        round,
 				MatchNumber:  matchCounter,
 				Status:       domain.MatchPending,
-				MatchNotes:   fmt.Sprintf("Match %d", matchCounter),
+				// Participants: newParticipants,
 			}
 
-			// Connect previous round matches
-			if i*2 < len(prevRoundMatches) {
-				prevRoundMatches[i*2].NextMatchID = &match.ID
-				match.MatchNotes += fmt.Sprintf(" (Winner of Match %d", prevRoundMatches[i*2].MatchNumber)
-			}
-			if i*2+1 < len(prevRoundMatches) {
-				prevRoundMatches[i*2+1].NextMatchID = &match.ID
-				match.MatchNotes += fmt.Sprintf(" vs Winner of Match %d)", prevRoundMatches[i*2+1].MatchNumber)
+			//set forward links in previous matches
+			if i < len(prevRoundMatches) {
+				prevRoundMatches[i].NextMatchID = &match.ID
 			}
 
-			roundMatches[round] = append(roundMatches[round], match)
+			if i+1 < len(prevRoundMatches) {
+				prevRoundMatches[i+1].NextMatchID = &match.ID
+			}
+
+			currentRound = append(currentRound, match)
 			matches = append(matches, match)
 			matchCounter++
 		}
+		roundMatches[round] = currentRound
 	}
 
-	return matches, roundMatches, nil
+	return matches,roundMatches, nil
 }
 
 // applyChallongeSeeding arranges participants using Challonge's seeding algorithm
