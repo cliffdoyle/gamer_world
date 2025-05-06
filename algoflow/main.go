@@ -21,6 +21,17 @@ func main() {
 		{ID: uuid.New(), ParticipantName: "Player 6"},
 		{ID: uuid.New(), ParticipantName: "Player 7"},
 	}
+
+	getName := func(uid uuid.UUID) string {
+		for _, participant := range participants {
+			if participant.ID == uid {
+				return participant.ParticipantName
+			}
+		}
+
+		return "TBD"
+	}
+
 	ctx := context.Background()
 	generator := doubleelem.NewSingleEliminationGenerator()
 
@@ -28,7 +39,9 @@ func main() {
 	tournamentID := uuid.New()
 
 	// Generate winners bracket
-	_, WinnersBracketRound, err := generator.Generate(ctx, tournamentID, doubleelem.SingleElimination, participants, nil)
+	_, WinnersBracketRound, err := generator.Generate(
+		ctx, tournamentID, doubleelem.SingleElimination, participants, nil,
+	)
 	if err != nil {
 		log.Fatalf("Error generating bracket: %v", err)
 	}
@@ -49,27 +62,49 @@ func main() {
 			match.ScoreParticipant1 = 2
 			match.ScoreParticipant2 = 1
 
-			fmt.Printf("Match %d (Round %d): %s wins over %s\n", match.MatchNumber, match.Round, p1.ParticipantName, p2.ParticipantName)
+			fmt.Printf(
+				"Match %d (Round %d): %s wins over %s\n", match.MatchNumber, match.Round, p1.ParticipantName,
+				p2.ParticipantName,
+			)
+		}
+	}
+
+	for i, matches := range WinnersBracketRound {
+		fmt.Printf("Round: %d\n", i)
+
+		for _, match := range matches {
+			//fmt.Printf("Match: %#v\n", *match)
+			player1 := "TDB"
+			player2 := "TDB"
+			if match.Participant1ID != nil {
+				player1 = getName(*match.Participant1ID)
+			}
+
+			if match.Participant2ID != nil {
+				player2 = getName(*match.Participant2ID)
+			}
+
+			fmt.Printf("Match: {%s, %s}\n", player1, player2)
 		}
 	}
 
 	// Now generate the losers bracket
-	generatorDoubleelem := doubleelem.NewDoubleEliminationGenerator()
-
-	losersMatches, finalMatch, err := generatorDoubleelem.Generate(ctx, tournamentID, doubleelem.DoubleElimination, WinnersBracketRound, nil)
-	if err != nil {
-		log.Fatalf("Error generating bracket: %v", err)
-	}
-
-	// 🏆 Losers bracket matches
-	fmt.Println("\nLosers Bracket Matches:")
-	for _, m := range losersMatches {
-		fmt.Printf("Match ID: %s, Round: %d, Match Number: %d\n", m.ID, m.Round, m.MatchNumber)
-	}
-
-	if finalMatch != nil {
-		fmt.Println("Final Losers Match:", finalMatch.ID)
-	} else {
-		fmt.Println("No final match in losers bracket.")
-	}
+	//generatorDoubleelem := doubleelem.NewDoubleEliminationGenerator()
+	//
+	//losersMatches, finalMatch, err := generatorDoubleelem.Generate(ctx, tournamentID, doubleelem.DoubleElimination, WinnersBracketRound, nil)
+	//if err != nil {
+	//	log.Fatalf("Error generating bracket: %v", err)
+	//}
+	//
+	//// 🏆 Losers bracket matches
+	//fmt.Println("\nLosers Bracket Matches:")
+	//for _, m := range losersMatches {
+	//	fmt.Printf("Match ID: %s, Round: %d, Match Number: %d\n", m.ID, m.Round, m.MatchNumber)
+	//}
+	//
+	//if finalMatch != nil {
+	//	fmt.Println("Final Losers Match:", finalMatch.ID)
+	//} else {
+	//	fmt.Println("No final match in losers bracket.")
+	//}
 }

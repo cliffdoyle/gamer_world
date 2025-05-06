@@ -15,16 +15,26 @@ import (
 
 // TournamentService defines methods for tournament business logic
 type TournamentService interface {
-	CreateTournament(ctx context.Context, request *domain.CreateTournamentRequest, creatorID uuid.UUID) (*domain.Tournament, error)
+	CreateTournament(
+		ctx context.Context, request *domain.CreateTournamentRequest, creatorID uuid.UUID,
+	) (*domain.Tournament, error)
 	GetTournament(ctx context.Context, id uuid.UUID) (*domain.TournamentResponse, error)
-	ListTournaments(ctx context.Context, filters map[string]interface{}, page, pageSize int) ([]*domain.TournamentResponse, int, error)
-	UpdateTournament(ctx context.Context, id uuid.UUID, request *domain.UpdateTournamentRequest) (*domain.Tournament, error)
+	ListTournaments(
+		ctx context.Context, filters map[string]interface{}, page, pageSize int,
+	) ([]*domain.TournamentResponse, int, error)
+	UpdateTournament(ctx context.Context, id uuid.UUID, request *domain.UpdateTournamentRequest) (
+		*domain.Tournament, error,
+	)
 	DeleteTournament(ctx context.Context, id uuid.UUID) error
 	UpdateTournamentStatus(ctx context.Context, id uuid.UUID, status domain.TournamentStatus) error
 
 	// Participant operations
-	RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error)
-	UpdateParticipant(ctx context.Context, tournamentID uuid.UUID, participantID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error)
+	RegisterParticipant(
+		ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest,
+	) (*domain.Participant, error)
+	UpdateParticipant(
+		ctx context.Context, tournamentID uuid.UUID, participantID uuid.UUID, request *domain.ParticipantRequest,
+	) (*domain.Participant, error)
 	UnregisterParticipant(ctx context.Context, tournamentID, userID uuid.UUID) error
 	GetParticipants(ctx context.Context, tournamentID uuid.UUID) ([]*domain.ParticipantResponse, error)
 	CheckInParticipant(ctx context.Context, tournamentID, userID uuid.UUID) error
@@ -35,11 +45,16 @@ type TournamentService interface {
 	GetMatches(ctx context.Context, tournamentID uuid.UUID) ([]*domain.MatchResponse, error)
 	GetMatchesByRound(ctx context.Context, tournamentID uuid.UUID, round int) ([]*domain.MatchResponse, error)
 	GetMatchesByParticipant(ctx context.Context, tournamentID, participantID uuid.UUID) ([]*domain.MatchResponse, error)
-	UpdateMatchScore(ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, userID uuid.UUID, request *domain.ScoreUpdateRequest) error
+	UpdateMatchScore(
+		ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, userID uuid.UUID,
+		request *domain.ScoreUpdateRequest,
+	) error
 	DeleteMatches(ctx context.Context, tournamentID uuid.UUID) error
 
 	// Chat operations
-	SendMessage(ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.MessageRequest) (*domain.Message, error)
+	SendMessage(
+		ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.MessageRequest,
+	) (*domain.Message, error)
 	GetMessages(ctx context.Context, tournamentID uuid.UUID, limit, offset int) ([]*domain.MessageResponse, error)
 }
 
@@ -79,7 +94,9 @@ func (e *ErrTournamentNotFound) Error() string {
 }
 
 // CreateTournament creates a new tournament
-func (s *tournamentService) CreateTournament(ctx context.Context, request *domain.CreateTournamentRequest, creatorID uuid.UUID) (*domain.Tournament, error) {
+func (s *tournamentService) CreateTournament(
+	ctx context.Context, request *domain.CreateTournamentRequest, creatorID uuid.UUID,
+) (*domain.Tournament, error) {
 	// Validate format
 	if request.Format == "" {
 		request.Format = domain.SingleElimination
@@ -150,7 +167,9 @@ func (s *tournamentService) GetTournament(ctx context.Context, id uuid.UUID) (*d
 }
 
 // ListTournaments retrieves tournaments based on filters with pagination
-func (s *tournamentService) ListTournaments(ctx context.Context, filters map[string]interface{}, page, pageSize int) ([]*domain.TournamentResponse, int, error) {
+func (s *tournamentService) ListTournaments(
+	ctx context.Context, filters map[string]interface{}, page, pageSize int,
+) ([]*domain.TournamentResponse, int, error) {
 	tournaments, total, err := s.tournamentRepo.List(ctx, filters, page, pageSize)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list tournaments: %w", err)
@@ -188,7 +207,9 @@ func (s *tournamentService) ListTournaments(ctx context.Context, filters map[str
 }
 
 // UpdateTournament updates an existing tournament
-func (s *tournamentService) UpdateTournament(ctx context.Context, id uuid.UUID, request *domain.UpdateTournamentRequest) (*domain.Tournament, error) {
+func (s *tournamentService) UpdateTournament(
+	ctx context.Context, id uuid.UUID, request *domain.UpdateTournamentRequest,
+) (*domain.Tournament, error) {
 	// Get current tournament
 	tournament, err := s.tournamentRepo.GetByID(ctx, id)
 	if err != nil {
@@ -272,7 +293,9 @@ func (s *tournamentService) DeleteTournament(ctx context.Context, id uuid.UUID) 
 }
 
 // UpdateTournamentStatus updates the status of a tournament
-func (s *tournamentService) UpdateTournamentStatus(ctx context.Context, id uuid.UUID, status domain.TournamentStatus) error {
+func (s *tournamentService) UpdateTournamentStatus(
+	ctx context.Context, id uuid.UUID, status domain.TournamentStatus,
+) error {
 	// Get current tournament
 	tournament, err := s.tournamentRepo.GetByID(ctx, id)
 	if err != nil {
@@ -370,7 +393,9 @@ func isValidStatusTransition(from, to domain.TournamentStatus) bool {
 }
 
 // RegisterParticipant registers a participant for a tournament
-func (s *tournamentService) RegisterParticipant(ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error) {
+func (s *tournamentService) RegisterParticipant(
+	ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest,
+) (*domain.Participant, error) {
 	// Create participant
 	participant := &domain.Participant{
 		ID:              uuid.New(),
@@ -421,7 +446,9 @@ func (s *tournamentService) UnregisterParticipant(ctx context.Context, tournamen
 }
 
 // GetParticipants retrieves all participants for a tournament
-func (s *tournamentService) GetParticipants(ctx context.Context, tournamentID uuid.UUID) ([]*domain.ParticipantResponse, error) {
+func (s *tournamentService) GetParticipants(ctx context.Context, tournamentID uuid.UUID) (
+	[]*domain.ParticipantResponse, error,
+) {
 	// Get participants
 	participants, err := s.participantRepo.ListByTournament(ctx, tournamentID)
 	if err != nil {
@@ -501,7 +528,9 @@ func (s *tournamentService) CheckInParticipant(ctx context.Context, tournamentID
 }
 
 // UpdateParticipantSeed updates a participant's seed
-func (s *tournamentService) UpdateParticipantSeed(ctx context.Context, tournamentID uuid.UUID, participantID uuid.UUID, seed int) error {
+func (s *tournamentService) UpdateParticipantSeed(
+	ctx context.Context, tournamentID uuid.UUID, participantID uuid.UUID, seed int,
+) error {
 	// Get tournament
 	tournament, err := s.tournamentRepo.GetByID(ctx, tournamentID)
 	if err != nil {
@@ -559,10 +588,16 @@ func (s *tournamentService) GenerateBracket(ctx context.Context, tournamentID uu
 	// Generate bracket based on tournament format
 	var matches []*domain.Match
 	options := make(map[string]interface{})
+	fmt.Println(">>> Generating brackets")
 	matches, err = s.bracketGenerator.Generate(ctx, tournamentID, bracketFormat, participants, options)
 	if err != nil {
 		return fmt.Errorf("failed to generate bracket: %w", err)
 	}
+	fmt.Println("[OK] -> Generated brackets")
+	for _, match := range matches {
+		fmt.Printf("{%#v}/n", *match)
+	}
+	fmt.Println("[OK] <- Generated brackets")
 
 	// First, create all matches without next_match_id or loser_next_match_id
 	matchesWithoutReferences := make([]*domain.Match, len(matches))
@@ -640,7 +675,9 @@ func (s *tournamentService) GetMatches(ctx context.Context, tournamentID uuid.UU
 }
 
 // GetMatchesByRound retrieves matches for a specific round
-func (s *tournamentService) GetMatchesByRound(ctx context.Context, tournamentID uuid.UUID, round int) ([]*domain.MatchResponse, error) {
+func (s *tournamentService) GetMatchesByRound(
+	ctx context.Context, tournamentID uuid.UUID, round int,
+) ([]*domain.MatchResponse, error) {
 	// Get matches
 	matches, err := s.matchRepo.GetByRound(ctx, tournamentID, round)
 	if err != nil {
@@ -676,7 +713,9 @@ func (s *tournamentService) GetMatchesByRound(ctx context.Context, tournamentID 
 }
 
 // GetMatchesByParticipant retrieves matches for a specific participant
-func (s *tournamentService) GetMatchesByParticipant(ctx context.Context, tournamentID, participantID uuid.UUID) ([]*domain.MatchResponse, error) {
+func (s *tournamentService) GetMatchesByParticipant(
+	ctx context.Context, tournamentID, participantID uuid.UUID,
+) ([]*domain.MatchResponse, error) {
 	// Get matches
 	matches, err := s.matchRepo.GetByParticipant(ctx, tournamentID, participantID)
 	if err != nil {
@@ -712,7 +751,10 @@ func (s *tournamentService) GetMatchesByParticipant(ctx context.Context, tournam
 }
 
 // UpdateMatchScore updates the score of a match and advances winners if needed
-func (s *tournamentService) UpdateMatchScore(ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, userID uuid.UUID, request *domain.ScoreUpdateRequest) error {
+func (s *tournamentService) UpdateMatchScore(
+	ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, userID uuid.UUID,
+	request *domain.ScoreUpdateRequest,
+) error {
 	// Get match
 	match, err := s.matchRepo.GetByID(ctx, matchID)
 	if err != nil {
@@ -865,7 +907,9 @@ func (s *tournamentService) checkTournamentCompletion(ctx context.Context, tourn
 }
 
 // SendMessage sends a message to the tournament chat
-func (s *tournamentService) SendMessage(ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.MessageRequest) (*domain.Message, error) {
+func (s *tournamentService) SendMessage(
+	ctx context.Context, tournamentID uuid.UUID, userID uuid.UUID, request *domain.MessageRequest,
+) (*domain.Message, error) {
 	// Check if tournament exists
 	_, err := s.tournamentRepo.GetByID(ctx, tournamentID)
 	if err != nil {
@@ -891,7 +935,9 @@ func (s *tournamentService) SendMessage(ctx context.Context, tournamentID uuid.U
 }
 
 // GetMessages retrieves chat messages for a tournament
-func (s *tournamentService) GetMessages(ctx context.Context, tournamentID uuid.UUID, limit, offset int) ([]*domain.MessageResponse, error) {
+func (s *tournamentService) GetMessages(
+	ctx context.Context, tournamentID uuid.UUID, limit, offset int,
+) ([]*domain.MessageResponse, error) {
 	// Check if tournament exists
 	_, err := s.tournamentRepo.GetByID(ctx, tournamentID)
 	if err != nil {
@@ -923,7 +969,9 @@ func (s *tournamentService) GetMessages(ctx context.Context, tournamentID uuid.U
 }
 
 // UpdateParticipant updates a participant's details
-func (s *tournamentService) UpdateParticipant(ctx context.Context, tournamentID uuid.UUID, participantID uuid.UUID, request *domain.ParticipantRequest) (*domain.Participant, error) {
+func (s *tournamentService) UpdateParticipant(
+	ctx context.Context, tournamentID uuid.UUID, participantID uuid.UUID, request *domain.ParticipantRequest,
+) (*domain.Participant, error) {
 	// Get participant
 	participant, err := s.participantRepo.GetByID(ctx, participantID)
 	if err != nil {
