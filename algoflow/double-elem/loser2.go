@@ -28,30 +28,24 @@ func (g *DoubleElimGenerator) generateDouble(ctx context.Context, tournaID uuid.
 
 	return allMatches, winnerRounds, loserRounds, nil
 }
-
 func (g *SingleEliminationGenerator) generateLosers(ctx context.Context, tournamentID uuid.UUID, winnerRounds [][]*domain.Match) ([][]*domain.Match, error) {
 	if len(winnerRounds) < 2 {
 		return nil, errors.New("cannot generate loser's bracket with less than 2 winner rounds")
 	}
 
-	// Slice to hold rounds of the losers Bracket
-	losersRound := make([][]*domain.Match, 0)
-
+	losersRounds := make([][]*domain.Match, 0)
 	matchCounter := 1000
 
-	// Step2: Extract losers from WB round 1
+	// Step 1: Process WB Round 1 losers for LB Round 1
 	firstRoundLosers := []*uuid.UUID{}
-
 	for _, match := range winnerRounds[0] {
 		if match.LoserID != nil {
 			firstRoundLosers = append(firstRoundLosers, match.LoserID)
 		}
 	}
 
-	// Step 3b: pair up losers into LB matches
-	// we take every two losers and make a new match
-
-	lbFirstRound := []*domain.Match{} // slice to hold matches in first round
+	// Step 2: Create LB Round 1
+	lbFirstRound := []*domain.Match{}
 	byePlayers := []*uuid.UUID{}
 
 	for i := 0; i < len(firstRoundLosers); i += 2 {
@@ -66,67 +60,66 @@ func (g *SingleEliminationGenerator) generateLosers(ctx context.Context, tournam
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),
 			}
-			matchCounter++
 			lbFirstRound = append(lbFirstRound, match)
-			fmt.Printf("LB Match %d: %s vs %s\n", match.MatchNumber, match.Participant1ID, match.Participant2ID)
-		} else {
-			// Odd person out gets a bye
-			byePlayers = append(byePlayers, firstRoundLosers[i])
-			fmt.Printf("Bye in LB Round 1: %s\n", *firstRoundLosers[i])
-		}
-	}
-	// We now need to use Winners in losers bracket and bye players to form Loser bracket round 2
-	// Build round2 using Winners of LB Round 1(not known yet- will be updated later)
-	// Bye players-directly forwarded to Round 2
-
-	round2Players := []*uuid.UUID{} // collecting winners from LB Round 1
-
-	for _, match := range lbFirstRound {
-		if match.WinnerID != nil {
-			round2Players = append(round2Players, match.WinnerID)
-		}
-	}
-
-	// Adding players who had byes in Round 1 of LB
-	round2Players = append(round2Players, byePlayers...)
-
-	// Generate matches for Round 2
-	lbSecondRound := []*domain.Match{}
-	var lbRound2ByePlayer *uuid.UUID
-
-	for i := 0; i < len(round2Players); i += 2 {
-		if i+1 < len(round2Players) {
-
-			match := &domain.Match{
-				TournamentID:   tournamentID,
-				MatchNumber:    matchCounter,
-				Round:          2,
-				Participant1ID: round2Players[i],
-				Participant2ID: round2Players[i+1],
-				BracketType:    domain.LosersBracket,
-				CreatedAt:      time.Now(),
-				UpdatedAt:      time.Now(),
-			}
-			lbSecondRound = append(lbSecondRound, match)
-			fmt.Printf("LB Match %d (Round 2): %s vs %s\n", match.MatchNumber, match.Participant1ID, match.Participant2ID)
 			matchCounter++
 		} else {
-			// Bye -move to Round 3
-			lbRound2ByePlayer = round2Players[i]
-			fmt.Printf("Bye in LB Round 2: %s advances to Round 3\n", *lbRound2ByePlayer)
+			byePlayers = append(byePlayers, firstRoundLosers[i])
 		}
 	}
 
-	round3Players:=[]*uuid.UUID{}
+	losersRounds = append(losersRounds, lbFirstRound)
 
-	for _,match:=range lbSecondRound{
-		if match.WinnerID !=nil{
-			round3Players=append(round3Players, match.WinnerID)
+	// Step 3: Generate LB rounds starting from Round 2
+	prevRound := lbFirstRound
+	currentByes := byePlayers
+
+	for roundIndex := 1; roundIndex < len(winnerRounds); roundIndex++ {
+		currentPlayers := []*uuid.UUID{}
+
+		// 1. Add winners from previous LB round (placeholders now, filled later)
+		for _, match := range prevRound {
+			if match.WinnerID != nil {
+				currentPlayers = append(currentPlayers, match.WinnerID)
+			}
 		}
+
+		// 2. Add bye players from previous round
+		currentPlayers = append(currentPlayers, currentByes...)
+
+		// 3. Add new losers from the corresponding WB round
+		for _, match := range winnerRounds[roundIndex] {
+			if match.LoserID != nil {
+				currentPlayers = append(currentPlayers, match.LoserID)
+			}
+		}
+
+		// Build current LB round
+		currentRound := []*domain.Match{}
+		nextRoundByes := []*uuid.UUID{}
+
+		for i := 0; i < len(currentPlayers); i += 2 {
+			if i+1 < len(currentPlayers) {
+				match := &domain.Match{
+					TournamentID:   tournamentID,
+					MatchNumber:    matchCounter,
+					Round:          roundIndex + 1,
+					Participant1ID: currentPlayers[i],
+					Participant2ID: currentPlayers[i+1],
+					BracketType:    domain.LosersBracket,
+					CreatedAt:      time.Now(),
+					UpdatedAt:      time.Now(),
+				}
+				currentRound = append(currentRound, match)
+				matchCounter++
+			} else {
+				nextRoundByes = append(nextRoundByes, currentPlayers[i])
+			}
+		}
+
+		losersRounds = append(losersRounds, currentRound)
+		prevRound = currentRound
+		currentByes = nextRoundByes
 	}
 
-	if lbRound2ByePlayer != nil {
-		round3Players = append(round3Players, lbRound2ByePlayer)
-	}
-	
+	return losersRounds, nil
 }
