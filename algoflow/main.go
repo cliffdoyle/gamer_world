@@ -20,35 +20,33 @@ func main() {
 		{ID: uuid.New(), ParticipantName: "Player 5"},
 		{ID: uuid.New(), ParticipantName: "Player 6"},
 		{ID: uuid.New(), ParticipantName: "Player 7"},
+		{ID: uuid.New(), ParticipantName: "Player 8"},
 	}
 
 	getName := func(uid uuid.UUID) string {
-		for _, participant := range participants {
-			if participant.ID == uid {
-				return participant.ParticipantName
+		for _, p := range participants {
+			if p.ID == uid {
+				return p.ParticipantName
 			}
 		}
-
 		return "TBD"
 	}
 
 	ctx := context.Background()
-	generator := doubleelem.NewSingleEliminationGenerator()
-
-	// dummy tournament
 	tournamentID := uuid.New()
 
-	// Generate winners bracket
-	_, WinnersBracketRound, err := generator.Generate(
-		ctx, tournamentID, doubleelem.SingleElimination, participants, nil,
-	)
+	// Setup generators
+	singleGen := doubleelem.NewSingleEliminationGenerator()
+	doubleGen := &doubleelem.DoubleElimGenerator{SingleElim: singleGen}
+
+	// Generate winners bracket using double elimination
+	allMatches, winnerRounds, _, err := doubleGen.GenerateDouble(ctx, tournamentID, participants)
 	if err != nil {
-		log.Fatalf("Error generating bracket: %v", err)
+		log.Fatalf("Failed to generate double elimination: %v", err)
 	}
 
-	// 💡 Set dummy winners and losers for testing
-	for roundIndex, round := range WinnersBracketRound {
-		fmt.Printf("Setting results for round %d\n", roundIndex)
+	// Simulate winners/losers for testing
+	for _, round := range winnerRounds {
 		for _, match := range round {
 			if len(match.Participants) < 2 {
 				continue
@@ -56,55 +54,58 @@ func main() {
 			p1 := match.Participants[0]
 			p2 := match.Participants[1]
 
-			// For testing: participant 1 always wins
 			match.WinnerID = &p1.ID
 			match.LoserID = &p2.ID
 			match.ScoreParticipant1 = 2
 			match.ScoreParticipant2 = 1
-
-			fmt.Printf(
-				"Match %d (Round %d): %s wins over %s\n", match.MatchNumber, match.Round, p1.ParticipantName,
-				p2.ParticipantName,
-			)
 		}
 	}
 
-	for i, matches := range WinnersBracketRound {
-		fmt.Printf("Round: %d\n", i)
-
-		for _, match := range matches {
-			//fmt.Printf("Match: %#v\n", *match)
-			player1 := "TDB"
-			player2 := "TDB"
-			if match.Participant1ID != nil {
-				player1 = getName(*match.Participant1ID)
-			}
-
-			if match.Participant2ID != nil {
-				player2 = getName(*match.Participant2ID)
-			}
-
-			fmt.Printf("Match: {%s, %s}\n", player1, player2)
-		}
+	// Generate the losers bracket
+	loserRounds, err := singleGen.GenerateLosers(ctx, tournamentID, winnerRounds)
+	if err != nil {
+		log.Fatalf("Failed to generate losers bracket: %v", err)
 	}
 
-	// Now generate the losers bracket
-	//generatorDoubleelem := doubleelem.NewDoubleEliminationGenerator()
-	//
-	//losersMatches, finalMatch, err := generatorDoubleelem.Generate(ctx, tournamentID, doubleelem.DoubleElimination, WinnersBracketRound, nil)
-	//if err != nil {
-	//	log.Fatalf("Error generating bracket: %v", err)
-	//}
-	//
-	//// 🏆 Losers bracket matches
-	//fmt.Println("\nLosers Bracket Matches:")
-	//for _, m := range losersMatches {
-	//	fmt.Printf("Match ID: %s, Round: %d, Match Number: %d\n", m.ID, m.Round, m.MatchNumber)
-	//}
-	//
-	//if finalMatch != nil {
-	//	fmt.Println("Final Losers Match:", finalMatch.ID)
-	//} else {
-	//	fmt.Println("No final match in losers bracket.")
-	//}
+// Print Winner Bracket
+fmt.Println("\n--- Winner's Bracket ---")
+for i, round := range winnerRounds {
+	fmt.Printf("Round %d:\n", i+1)
+	for _, match := range round {
+		var p1, p2 string
+		if match.Participant1ID != nil {
+			p1 = getName(*match.Participant1ID)
+		} else {
+			p1 = "TBD"
+		}
+		if match.Participant2ID != nil {
+			p2 = getName(*match.Participant2ID)
+		} else {
+			p2 = "TBD"
+		}
+		fmt.Printf("  Match %d: %s vs %s\n", match.MatchNumber, p1, p2)
+	}
+}
+
+	// Print Loser Bracket
+fmt.Println("\n--- Loser's Bracket ---")
+for i, round := range loserRounds {
+	fmt.Printf("LB Round %d:\n", i+1)
+	for _, match := range round {
+		var p1, p2 string
+		if match.Participant1ID != nil {
+			p1 = getName(*match.Participant1ID)
+		} else {
+			p1 = "TBD"
+		}
+		if match.Participant2ID != nil {
+			p2 = getName(*match.Participant2ID)
+		} else {
+			p2 = "TBD"
+		}
+		fmt.Printf("  Match %d: %s vs %s\n", match.MatchNumber, p1, p2)
+	}
+}
+
+	fmt.Printf("\nTotal Matches: %d\n", len(allMatches))
 }

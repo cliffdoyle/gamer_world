@@ -3,7 +3,6 @@ package doubleelem
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"algoflow/domain"
@@ -15,7 +14,7 @@ type DoubleElimGenerator struct {
 	SingleElim *SingleEliminationGenerator
 }
 
-func (g *DoubleElimGenerator) generateDouble(ctx context.Context, tournaID uuid.UUID, participants []*domain.Participant) ([]*domain.Match, [][]*domain.Match, [][]*domain.Match, error) {
+func (g *DoubleElimGenerator) GenerateDouble(ctx context.Context, tournaID uuid.UUID, participants []*domain.Participant) ([]*domain.Match, [][]*domain.Match, [][]*domain.Match, error) {
 	// Step 1: Generate winners bracket
 	winnersMatches, winnerRounds, err := g.SingleElim.generateSingleElimination(ctx, tournaID, participants)
 	if err != nil {
@@ -28,7 +27,8 @@ func (g *DoubleElimGenerator) generateDouble(ctx context.Context, tournaID uuid.
 
 	return allMatches, winnerRounds, loserRounds, nil
 }
-func (g *SingleEliminationGenerator) generateLosers(ctx context.Context, tournamentID uuid.UUID, winnerRounds [][]*domain.Match) ([][]*domain.Match, error) {
+
+func (g *SingleEliminationGenerator) GenerateLosers(ctx context.Context, tournamentID uuid.UUID, winnerRounds [][]*domain.Match) ([][]*domain.Match, error) {
 	if len(winnerRounds) < 2 {
 		return nil, errors.New("cannot generate loser's bracket with less than 2 winner rounds")
 	}
