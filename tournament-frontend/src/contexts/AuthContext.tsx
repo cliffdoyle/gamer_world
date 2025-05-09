@@ -47,10 +47,30 @@ async function apiGoogleSignIn(googleIdToken: string): Promise<{ token: string; 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id_token: googleIdToken }),
   });
+  
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Google Sign-In failed with status: ' + response.status }));
-    throw new Error(errorData.error || 'Google Sign-In failed');
+    const errorData = await response.json().catch(() => ({ 
+      error: 'Google Sign-In failed with status: ' + response.status 
+    }));
+    
+    // Handle specific error codes
+    if (errorData.code === 'auth_config_error') {
+      throw new Error('Authentication service configuration issue. Please try again later or use email login.');
+    }
+    
+    if (errorData.code === 'token_expired') {
+      throw new Error('Your login session has expired. Please try signing in again.');
+    }
+    
+    if (errorData.code === 'account_exists') {
+      const provider = errorData.provider || 'another method';
+      throw new Error(`An account with this email already exists. Please sign in with ${provider}.`);
+    }
+
+    // Default error message
+    throw new Error(errorData.error || 'Google Sign-In failed. Please try again or use email/password login.');
   }
+  
   return response.json(); // Expecting { token: string, user: User } directly from API
 }
 

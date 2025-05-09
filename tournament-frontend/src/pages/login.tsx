@@ -67,7 +67,11 @@ const LoginPage = () => {
         router.push('/dashboard');
       }
     } catch (err: any) {
-      setError(err.message || 'Google sign-in failed');
+      // Display the more user-friendly error message from our improved error handling
+      setError((err && err.message) || 'Google sign-in failed. Please try email login or try again later.');
+      
+      // Log the detailed error for debugging purposes
+      console.error('Google auth error:', err);
     }
   };
 

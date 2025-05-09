@@ -20,8 +20,10 @@ import (
 func getGoogleClientID() string {
 	clientID := os.Getenv("GOOGLE_CLIENT_ID")
 	if clientID == "" {
+		// Log a warning if client ID is missing
+		fmt.Println("WARNING: GOOGLE_CLIENT_ID environment variable is not set. Google authentication will not work properly.")
 		// Default fallback or placeholder for development
-		return "YOUR_GOOGLE_CLIENT_ID_HERE"
+		return "YOUR_GOOGLE_CLIENT_ID_HERE" // This will cause authentication to fail with a specific error
 	}
 	return clientID
 }
@@ -142,7 +144,31 @@ func GoogleSignIn(c *gin.Context) {
 
 	payload, err := idtoken.Validate(context.Background(), input.IDToken, googleClientID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Google ID token: " + err.Error()})
+		// Log detailed error for debugging
+		fmt.Printf("Google token validation error: %v\n", err)
+
+		// Check for specific error types for better user feedback
+		if strings.Contains(err.Error(), "audience provided does not match") {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Authentication configuration error. Please contact support.",
+				"code":  "auth_config_error",
+			})
+			return
+		}
+
+		if strings.Contains(err.Error(), "token expired") {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Your login session has expired. Please try signing in again.",
+				"code":  "token_expired",
+			})
+			return
+		}
+
+		// Generic error message
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Google authentication failed. Please try again or use a different sign-in method.",
+			"code":  "google_auth_failed",
+		})
 		return
 	}
 
@@ -183,7 +209,11 @@ func GoogleSignIn(c *gin.Context) {
 
 		if err == nil {
 			if user.Provider != "" && user.Provider != "google" {
-				c.JSON(http.StatusConflict, gin.H{"error": "Account with this email already exists. Please sign in with your original method.", "provider": user.Provider})
+				c.JSON(http.StatusConflict, gin.H{
+					"error":    "Account with this email already exists. Please sign in with your original method.",
+					"provider": user.Provider,
+					"code":     "account_exists",
+				})
 				return
 			} else if user.Provider == "" {
 				user.Provider = "google"
