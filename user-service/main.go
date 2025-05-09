@@ -44,8 +44,8 @@ func main() {
 		userGroup.DELETE("/profile", handlers.DeleteUserAccount)
 	}
 
-	log.Println("User service is running on port:", os.Getenv("PORT"))
+	log.Println("User service is running on port:", os.Getenv("SERVER_PORT"))
 	// Start the server
 
-	r.Run(":" + os.Getenv("PORT"))
+	r.Run(":" + os.Getenv("SERVER_PORT"))
 }

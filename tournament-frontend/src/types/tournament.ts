@@ -60,7 +60,7 @@ export interface Match {
   status: string;
   created_at?: string;
   updated_at?: string;
-  bracket?: BracketType;
+  bracket_type?: BracketType;
   isGrandFinal?: boolean;
   match_notes?: string;
   loser_next_match_id?: string | null;

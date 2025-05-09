@@ -1,446 +1,387 @@
-import React from 'react';
-import { Match, Tournament, Participant, TournamentFormat } from '@/types/tournament';
+import React, { useEffect, useRef, useMemo } from 'react';
+import MatchComponent from './Match'; // Assuming your Match component is named MatchComponent
+import { Match as MatchType, Participant, Tournament, TournamentFormat } from '@/types/tournament'; // Ensure MatchType has bracket_type
 
-type BracketType = 'WINNERS' | 'LOSERS' | null;
+// Define UI-specific bracket types
+type UIMatchBracketType = 'WINNERS' | 'LOSERS' | 'GRAND_FINALS_WRAPPER';
 
-interface ExtendedMatch extends Match {
-  isGrandFinal?: boolean;
-  bracket?: BracketType;
+interface ExtendedMatch extends MatchType {
+  // Fields from MatchType: id, round, match_number, participant1_id, participant2_id,
+  // winner_id, loser_id, score_participant1, score_participant2, status,
+  // next_match_id, loser_next_match_id, created_at, updated_at,
+  // bracket_type (WINNERS, LOSERS, GRAND_FINALS - from backend)
+  // match_notes (optional)
+  
+  // UI specific properties
+  uiBracket?: UIMatchBracketType; // For grouping in the UI
+  isGrandFinalMatch?: boolean;    // True if it's one of the actual GF matches
+  sourceMatchForP1?: string;    // e.g., "W: M1" or "L: M3"
+  sourceMatchForP2?: string;
+  participant1Name?: string;
+  participant2Name?: string;
 }
 
-interface BracketViewerProps {
+interface ChallongeLikeBracketProps {
   tournament: Tournament;
-  matches: Match[];
+  matches: MatchType[];
   participants: Participant[];
+  onMatchClick?: (match: MatchType) => void;
 }
 
-const BracketViewer: React.FC<BracketViewerProps> = ({ tournament, matches, participants }) => {
-  // State for bracket visualization data
-  const [processedMatches, setProcessedMatches] = React.useState<ExtendedMatch[]>([]);
-  const [regularWinnersMatches, setRegularWinnersMatches] = React.useState<ExtendedMatch[]>([]);
-  const [losersMatches, setLosersMatches] = React.useState<ExtendedMatch[]>([]);
-  const [grandFinalMatches, setGrandFinalMatches] = React.useState<ExtendedMatch[]>([]);
-  const [maxRound, setMaxRound] = React.useState(0);
+const ChallongeLikeBracket: React.FC<ChallongeLikeBracketProps> = ({
+  tournament,
+  matches: initialMatches, // Renamed to avoid confusion
+  participants,
+  onMatchClick,
+}) => {
+  const bracketRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  React.useEffect(() => {
-    // Process bracket data when matches are updated
-    const processed = prepareBracketData(matches, tournament.format);
-    setProcessedMatches(processed);
-    
-    // Separate matches by bracket type
-    const winners = processed.filter(m => m.bracket === 'WINNERS' || !m.bracket);
-    const losers = processed.filter(m => m.bracket === 'LOSERS');
-    const finals = processed.filter(m => m.isGrandFinal === true);
-    const regularWinners = winners.filter(m => m.isGrandFinal !== true);
-    
-    setRegularWinnersMatches(regularWinners);
-    setLosersMatches(losers);
-    setGrandFinalMatches(finals);
-    
-    // Calculate max round for spacing
-    const winnersMaxRound = Math.max(...regularWinners.map(m => m.round), 0);
-    const losersMaxRound = Math.max(...losers.map(m => m.round), 0);
-    setMaxRound(Math.max(winnersMaxRound, losersMaxRound) + (finals.length > 0 ? 1 : 0));
-  }, [matches, tournament.format]);
+  const participantsById = useMemo(() => 
+    participants.reduce((acc, p) => {
+      acc[p.id] = p;
+      return acc;
+    }, {} as Record<string, Participant>),
+    [participants]
+  );
 
-  // Function to get participant name by ID
-  const getParticipantNameById = (id: string | null) => {
+  const getParticipantName = (id: string | null | undefined): string => {
     if (!id) return 'TBD';
-    const participant = participants.find(p => p.id === id);
-    return participant ? (participant.participant_name || 'Unnamed') : 'TBD';
+    const participant = participantsById[id];
+    return participant ? (participant.participant_name || `P:${id.substring(0,4)}`) : 'TBD';
+  };
+  
+  const processedMatches = useMemo((): ExtendedMatch[] => {
+    return initialMatches.map(match => {
+      let uiBracket: UIMatchBracketType | undefined = undefined;
+      let isGrandFinalMatch = false;
+      let sourceMatchForP1: string | undefined = undefined;
+      let sourceMatchForP2: string | undefined = undefined;
+
+      // Determine UI Bracket Type based on backend's bracket_type
+      switch (match.bracket_type) {
+        case 'WINNERS':
+          uiBracket = 'WINNERS';
+          break;
+        case 'LOSERS':
+          uiBracket = 'LOSERS';
+          break;
+        case 'GRAND_FINALS':
+          uiBracket = 'GRAND_FINALS_WRAPPER'; // Special UI grouping for GF
+          isGrandFinalMatch = true;
+          break;
+        default:
+          // Fallback for single elimination or if bracket_type is missing
+          if (tournament.format === 'SINGLE_ELIMINATION') {
+            uiBracket = 'WINNERS';
+          }
+          break;
+      }
+
+      // Attempt to determine source for TBD slots
+      // This is a simplified version; true source requires deeper graph traversal
+      // or more explicit data from backend (e.g., which previous match feeds P1 vs P2)
+      if (!match.participant1_id) {
+        const p1Feeder = initialMatches.find(m => m.next_match_id === match.id || m.loser_next_match_id === match.id); // Needs refinement to know if it's P1
+        if (p1Feeder) {
+            sourceMatchForP1 = `${p1Feeder.next_match_id === match.id ? 'W' : 'L'}: M${p1Feeder.match_number}`;
+        }
+      }
+      if (!match.participant2_id) {
+        // This is complex as multiple matches could feed into one if byes are involved.
+        // True "feeder for P2" needs backend to provide this linkage more clearly.
+        // For now, we'll rely on participant IDs being filled eventually.
+      }
+
+
+      return {
+        ...match,
+        uiBracket,
+        isGrandFinalMatch,
+        participant1Name: getParticipantName(match.participant1_id),
+        participant2Name: getParticipantName(match.participant2_id),
+        sourceMatchForP1: match.participant1_id ? undefined : sourceMatchForP1,
+        sourceMatchForP2: match.participant2_id ? undefined : sourceMatchForP2, // Placeholder
+      };
+    }).sort((a,b) => a.match_number - b.match_number); // Sort all matches by number initially
+  }, [initialMatches, participantsById, tournament.format]);
+
+
+  const winnersBracketMatches = useMemo(() => 
+    processedMatches.filter(m => m.uiBracket === 'WINNERS'), 
+    [processedMatches]
+  );
+  const losersBracketMatches = useMemo(() => 
+    processedMatches.filter(m => m.uiBracket === 'LOSERS'), 
+    [processedMatches]
+  );
+  const grandFinalsMatches = useMemo(() => 
+    processedMatches.filter(m => m.uiBracket === 'GRAND_FINALS_WRAPPER'), 
+    [processedMatches]
+  );
+
+  const groupMatchesByRound = (matchesToGroup: ExtendedMatch[]): Record<number, ExtendedMatch[]> => {
+    return matchesToGroup.reduce((acc, match) => {
+      const round = match.round; // Use the match's own round
+      if (!acc[round]) acc[round] = [];
+      acc[round].push(match);
+      // Ensure matches within a round are sorted by match_number
+      acc[round].sort((a,b) => a.match_number - b.match_number);
+      return acc;
+    }, {} as Record<number, ExtendedMatch[]>);
   };
 
-  // Find match that this match flows into
-  const findNextMatch = (matchId: string | null): ExtendedMatch | undefined => {
-    if (!matchId) return undefined;
-    return processedMatches.find(m => m.id === matchId);
-  };
+  const winnerMatchesByRound = useMemo(() => groupMatchesByRound(winnersBracketMatches), [winnersBracketMatches]);
+  const loserMatchesByRound = useMemo(() => groupMatchesByRound(losersBracketMatches), [losersBracketMatches]);
 
-  // Calculate positioning info for connections between matches
-  const getConnectionPositions = (match: ExtendedMatch, round: number): { index: number; spacing: number } => {
-    const matchesInRound = processedMatches.filter(m => m.round === round && m.bracket === match.bracket);
-    const index = matchesInRound.findIndex(m => m.id === match.id);
-    const spacing = Math.pow(2, maxRound - round) * 20;
-    return { index, spacing };
-  };
+  const maxWinnerRound = useMemo(() => Math.max(0, ...Object.keys(winnerMatchesByRound).map(Number)), [winnerMatchesByRound]);
+  const maxLoserRound = useMemo(() => Math.max(0, ...Object.keys(loserMatchesByRound).map(Number)), [loserMatchesByRound]);
+  
+  useEffect(() => {
+    if (!bracketRef.current || !svgRef.current) return;
+    const svg = svgRef.current;
+    svg.innerHTML = ''; // Clear previous lines
 
-  // Prepare bracket data by ensuring proper bracket assignments
-  const prepareBracketData = (
-    matches: Match[], 
-    tournamentFormat: TournamentFormat | undefined
-  ): ExtendedMatch[] => {
-    if (!tournamentFormat) return matches as ExtendedMatch[];
+    const drawLine = (
+        sourceMatch: ExtendedMatch,
+        targetMatchId: string | null | undefined,
+        isLoserLine: boolean
+      ) => {
+        if (!targetMatchId) return;
+
+        const currentEl = document.querySelector(`[data-match-id="${sourceMatch.id}"]`);
+        const nextEl = document.querySelector(`[data-match-id="${targetMatchId}"]`);
+
+        if (currentEl && nextEl && bracketRef.current) {
+          const currentRect = currentEl.getBoundingClientRect();
+          const nextRect = nextEl.getBoundingClientRect();
+          const bracketContainerRect = bracketRef.current.getBoundingClientRect();
+
+          // Coordinates relative to the bracket container
+          const startX = currentRect.right - bracketContainerRect.left;
+          const startY = currentRect.top + currentRect.height / 2 - bracketContainerRect.top;
+          const endX = nextRect.left - bracketContainerRect.left;
+          const endY = nextRect.top + nextRect.height / 2 - bracketContainerRect.top;
+          
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          
+          // Simple elbow connector: M startX startY H midX V endY H endX
+          const midX = startX + (endX - startX) / 2;
+          path.setAttribute('d', `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`);
+          path.setAttribute('stroke', isLoserLine ? '#EF4444' : '#4B5563'); // Red for loser, gray for winner
+          path.setAttribute('stroke-width', '2');
+          path.setAttribute('fill', 'none');
+          svg.appendChild(path);
+        }
+    };
     
-    // Calculate maximum round
-    const maxRound = Math.max(...matches.map(m => m.round), 0);
-
-    // First pass - assign brackets based on tournament format
-    const withBrackets = matches.map(match => {
-      if (match.bracket) return match as ExtendedMatch;
-
-      // For single elimination, all matches are in winners bracket
-      if (tournamentFormat === 'SINGLE_ELIMINATION') {
-        return { ...match, bracket: 'WINNERS' as BracketType } as ExtendedMatch;
+    processedMatches.forEach(match => {
+      drawLine(match, match.next_match_id, false); // Winner line
+      if (match.bracket_type === 'WINNERS') { // Only WB matches have a loser_next_match_id that drops down
+          drawLine(match, match.loser_next_match_id, true); // Loser line
       }
-
-      // For double elimination, determine bracket based on round and structure
-      if (tournamentFormat === 'DOUBLE_ELIMINATION') {
-        const winnersRounds = Math.ceil(Math.log2(participants.length || 2));
-        const isLosers = match.round > winnersRounds;
-        
-        return {
-          ...match,
-          bracket: isLosers ? 'LOSERS' : 'WINNERS' as BracketType
-        } as ExtendedMatch;
-      }
-
-      // Default
-      return { ...match, bracket: null } as ExtendedMatch;
     });
 
-    // Second pass - identify grand finals for double elimination
-    return withBrackets.map(match => {
-      if (tournamentFormat !== 'DOUBLE_ELIMINATION') return match;
-      
-      // Grand finals is typically the last match in winners bracket with no next match
-      const isLastRound = match.round === maxRound;
-      const hasNoNextMatch = !matches.some(m => m.next_match_id === match.id);
-      
-      if (match.bracket === 'WINNERS' && isLastRound && hasNoNextMatch) {
-        return { ...match, isGrandFinal: true };
-      }
-      
-      return match;
-    });
-  };
+  }, [processedMatches, maxWinnerRound, maxLoserRound]); // Rerun when matches or layout might change
 
-  // Function to create connection lines to the grand final
-  const renderGrandFinalConnections = () => {
-    if (grandFinalMatches.length === 0) return null;
+  const renderRound = (
+    roundNum: number,
+    matchesInRound: ExtendedMatch[] | undefined,
+    bracketTitle: string
+  ) => {
+    if (!matchesInRound || matchesInRound.length === 0) return null;
     
-    // Calculate connection points
-    const grandFinal = grandFinalMatches[0];
-    const winnersFinalMatch = regularWinnersMatches.find(m => 
-      m.round === Math.max(...regularWinnersMatches.map(m => m.round)) && 
-      m.winner_id === grandFinal.participant1_id
-    );
-    
-    const losersFinalMatch = losersMatches.find(m => 
-      m.round === Math.max(...losersMatches.map(m => m.round)) && 
-      m.winner_id === grandFinal.participant2_id
-    );
-    
-    const winnersMaxRound = Math.max(...regularWinnersMatches.map(m => m.round), 0);
-    const losersMaxRound = Math.max(...losersMatches.map(m => m.round), 0);
-    
-    const rightEdge = maxRound * 220;
-    const grandFinalLeft = rightEdge - 220;
-    
-    return (
-      <>
-        {/* Winner's bracket connection */}
-        {winnersFinalMatch && (
-          <svg className="absolute" style={{ 
-            zIndex: 1, 
-            pointerEvents: 'none',
-            top: '80px',
-            left: 0,
-            width: '100%',
-            height: '100%'
-          }}>
-            <path 
-              d={`M ${winnersMaxRound * 220 - 20} 100 
-                  H ${grandFinalLeft - 50} 
-                  V 180 
-                  H ${grandFinalLeft - 10}`}
-              stroke="#94a3b8"
-              strokeWidth="2"
-              fill="none"
-            />
-          </svg>
-        )}
-        
-        {/* Loser's bracket connection */}
-        {losersFinalMatch && (
-          <svg className="absolute" style={{ 
-            zIndex: 1, 
-            pointerEvents: 'none',
-            top: '80px',
-            left: 0,
-            width: '100%',
-            height: '100%'
-          }}>
-            <path 
-              d={`M ${losersMaxRound * 220 - 20} 320 
-                  H ${grandFinalLeft - 50} 
-                  V 220 
-                  H ${grandFinalLeft - 10}`}
-              stroke="#94a3b8"
-              strokeWidth="2"
-              fill="none"
-            />
-          </svg>
-        )}
-      </>
-    );
-  };
+    let title = `${bracketTitle} Round ${roundNum}`;
+    if (bracketTitle === "Winners" && roundNum === maxWinnerRound) title = "Winners Finals";
+    if (bracketTitle === "Winners" && roundNum === maxWinnerRound -1 && maxWinnerRound > 1) title = "Winners Semifinals";
+    if (bracketTitle === "Losers" && roundNum === maxLoserRound) title = "Losers Finals";
 
-  // Render grand finals at the far right
-  const renderGrandFinalsSection = () => {
-    if (grandFinalMatches.length === 0) return null;
-    
+
     return (
-      <div className="absolute" style={{ 
-        right: '20px', 
-        top: '120px', 
-        width: '200px',
-        zIndex: 10
-      }}>
-        {grandFinalMatches.map(match => (
-          <div key={match.id} className="border-2 border-yellow-300 rounded-lg bg-white p-3 shadow-lg">
-            <div className="flex justify-between items-center border-b pb-2 mb-2">
-              <span className="text-sm font-medium text-yellow-700">
-                Grand Finals
-              </span>
-              <span className={`text-xs px-2 py-1 rounded ${
-                match.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-blue-50 text-blue-600'
-              }`}>
-                {match.status || 'PENDING'}
-              </span>
+      <div key={`${bracketTitle}-${roundNum}`} className="round">
+        <h3 className="round-title">{title}</h3>
+        <div className="matches">
+          {matchesInRound.map(match => (
+            <div className="match-wrapper" key={match.id} data-match-id={match.id}>
+              <MatchComponent // Use your actual Match component here
+                match={{
+                    ...match,
+                    // Pass TBD names if actual participants are not yet set
+                    participant1: match.participant1_id ? participantsById[match.participant1_id] : { id: 'tbd1', participant_name: match.sourceMatchForP1 || 'TBD' },
+                    participant2: match.participant2_id ? participantsById[match.participant2_id] : { id: 'tbd2', participant_name: match.sourceMatchForP2 || 'TBD' },
+                }}
+                onClick={onMatchClick}
+              />
             </div>
-            
-            <div className="flex flex-col justify-between">
-              <div className={`flex justify-between items-center py-2 ${
-                match.winner_id === match.participant1_id ? 'font-bold bg-green-50 rounded px-2' : ''
-              }`}>
-                <span className="text-sm" title={getParticipantNameById(match.participant1_id)}>
-                  {getParticipantNameById(match.participant1_id)}
-                </span>
-                <span className="bg-gray-50 px-2 py-1 rounded">
-                  {match.score_participant1 ?? '-'}
-                </span>
-              </div>
-              
-              <div className="border-t border-gray-200 my-2"></div>
-              
-              <div className={`flex justify-between items-center py-2 ${
-                match.winner_id === match.participant2_id ? 'font-bold bg-green-50 rounded px-2' : ''
-              }`}>
-                <span className="text-sm" title={getParticipantNameById(match.participant2_id)}>
-                  {getParticipantNameById(match.participant2_id)}
-                </span>
-                <span className="bg-gray-50 px-2 py-1 rounded">
-                  {match.score_participant2 ?? '-'}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // Render a section of the bracket (winners or losers)
-  const renderBracketSection = (bracketMatches: ExtendedMatch[], title: string, isLosers: boolean = false) => {
-    if (bracketMatches.length === 0) return null;
-    
-    const bracketMaxRound = Math.max(...bracketMatches.map(m => m.round));
-    
-    return (
-      <div className="mb-8">
-        <h3 className="text-lg font-medium mb-4 px-4 py-2 bg-gray-100 rounded-md shadow-sm">
-          {title}
-        </h3>
-        
-        <div className="overflow-auto">
-          <div className="flex" style={{ minWidth: `${bracketMaxRound * 220}px`, position: 'relative' }}>
-            {/* Draw connection lines between matches */}
-            <svg 
-              className="absolute top-0 left-0 w-full h-full" 
-              style={{ zIndex: 1, pointerEvents: 'none' }}
-            >
-              {bracketMatches.filter(match => match.next_match_id).map(match => {
-                const nextMatch = findNextMatch(match.next_match_id);
-                if (!nextMatch) return null;
-                
-                const sourceRound = match.round;
-                const targetRound = nextMatch.round;
-                
-                const sourcePosData = getConnectionPositions(match, sourceRound);
-                const targetPosData = getConnectionPositions(nextMatch, targetRound);
-                
-                // Calculate vertical positions
-                const sourceMatchHeight = 80; // Reduced height
-                
-                const sourceY = (sourcePosData.index * (sourceMatchHeight + sourcePosData.spacing)) + (sourceMatchHeight / 2) + 50;
-                const targetY = (targetPosData.index * (sourceMatchHeight + targetPosData.spacing)) + (sourceMatchHeight / 2) + 50;
-                
-                // Calculate horizontal positions
-                const columnWidth = 220;
-                const sourceX = sourceRound * columnWidth - 20;
-                const targetX = targetRound * columnWidth - columnWidth + 10;
-                
-                return (
-                  <path 
-                    key={`${match.id}-${nextMatch.id}`}
-                    d={`M ${sourceX} ${sourceY} H ${sourceX + 20} V ${targetY} H ${targetX}`}
-                    stroke="#94a3b8"
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                );
-              })}
-            </svg>
-            
-            {Array.from({ length: bracketMaxRound }, (_, i) => i + 1).map(round => (
-              <div key={round} className="w-52 px-2" style={{ minWidth: '200px' }}>
-                <h4 className="text-center font-medium mb-3 text-sm bg-gray-50 py-1 rounded">
-                  {isLosers ? `Losers Round ${round}` : `Round ${round}`}
-                </h4>
-                <div className="flex flex-col relative">
-                  {bracketMatches
-                    .filter(match => match.round === round)
-                    .sort((a, b) => a.match_number - b.match_number)
-                    .map((match, index) => {
-                      // Calculate spacing between matches based on the round
-                      const spacing = Math.pow(2, bracketMaxRound - round) * 20;
-                      
-                      // Find source matches - these are matches that feed into this one
-                      const sourceMatches = matches.filter(m => m.next_match_id === match.id);
-                      const participant1SourceMatch = sourceMatches.find(m => m.match_number % 2 !== 0);
-                      const participant2SourceMatch = sourceMatches.find(m => m.match_number % 2 === 0);
-                      
-                      // Get appropriate participant descriptions
-                      const participant1Name = match.participant1_id 
-                        ? getParticipantNameById(match.participant1_id)
-                        : participant1SourceMatch 
-                          ? (participant1SourceMatch.bracket === 'LOSERS' 
-                            ? `L: Match ${participant1SourceMatch.match_number}` 
-                            : `W: Match ${participant1SourceMatch.match_number}`)
-                          : 'TBD';
-                          
-                      const participant2Name = match.participant2_id 
-                        ? getParticipantNameById(match.participant2_id)
-                        : participant2SourceMatch 
-                          ? (participant2SourceMatch.bracket === 'LOSERS' 
-                            ? `L: Match ${participant2SourceMatch.match_number}` 
-                            : `W: Match ${participant2SourceMatch.match_number}`)
-                          : 'TBD';
-                      
-                      // Special highlight for matches that feed into grand finals
-                      const feedsIntoGrandFinal = grandFinalMatches.some(gf => 
-                        gf.participant1_id === match.winner_id || gf.participant2_id === match.winner_id
-                      );
-                      
-                      return (
-                        <div 
-                          key={match.id} 
-                          className="mb-3 relative" 
-                          style={{ 
-                            marginBottom: `${spacing}px`,
-                            zIndex: 10
-                          }}
-                        >
-                          <div className={`border rounded-lg bg-white p-2 shadow w-full 
-                            ${match.status === 'COMPLETED' ? 'border-green-200' : ''}
-                            ${feedsIntoGrandFinal ? 'border-yellow-300 border-2' : ''}
-                          `} style={{ height: '80px' }}>
-                            <div className="flex justify-between items-center border-b pb-1 mb-1">
-                              <span className="text-xs font-medium text-gray-600">
-                                Match {match.match_number}
-                              </span>
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                match.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-blue-50 text-blue-600'
-                              }`}>
-                                {match.status || 'PENDING'}
-                              </span>
-                            </div>
-                            
-                            <div className="flex flex-col justify-between h-[50px]">
-                              <div className={`flex justify-between items-center text-xs ${
-                                match.winner_id === match.participant1_id ? 'font-bold text-green-600' : ''
-                              }`}>
-                                <span className="truncate max-w-[120px]" title={participant1Name}>
-                                  {participant1Name}
-                                </span>
-                                <span className="bg-gray-50 px-1.5 rounded min-w-[24px] text-center">
-                                  {match.score_participant1 ?? '-'}
-                                </span>
-                              </div>
-                              
-                              <div className="border-t border-gray-100 my-1"></div>
-                              
-                              <div className={`flex justify-between items-center text-xs ${
-                                match.winner_id === match.participant2_id ? 'font-bold text-green-600' : ''
-                              }`}>
-                                <span className="truncate max-w-[120px]" title={participant2Name}>
-                                  {participant2Name}
-                                </span>
-                                <span className="bg-gray-50 px-1.5 rounded min-w-[24px] text-center">
-                                  {match.score_participant2 ?? '-'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  }
-                </div>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       </div>
     );
   };
-
-  // Main render function for the bracket viewer
-  const isDoubleElimination = tournament.format === 'DOUBLE_ELIMINATION' && losersMatches.length > 0;
 
   return (
-    <div className="challonge-bracket">
-      {/* Tournament format specific information header */}
-      <div className={`p-4 rounded-lg border mb-4 ${tournament.format === 'SINGLE_ELIMINATION' ? 'bg-blue-50 border-blue-200' : 'bg-yellow-50 border-yellow-200'}`}>
-        <h3 className={`text-base font-medium mb-1 ${tournament.format === 'SINGLE_ELIMINATION' ? 'text-blue-700' : 'text-yellow-700'}`}>
-          {tournament.format === 'SINGLE_ELIMINATION' 
-            ? 'Single Elimination Tournament' 
-            : tournament.format === 'DOUBLE_ELIMINATION' 
-              ? 'Double Elimination Tournament'
-              : tournament.format === 'ROUND_ROBIN'
-                ? 'Round Robin Tournament'
-                : 'Swiss Tournament'}
-        </h3>
-        <p className={`text-sm ${tournament.format === 'SINGLE_ELIMINATION' ? 'text-blue-600' : 'text-yellow-600'}`}>
-          {tournament.format === 'SINGLE_ELIMINATION' 
-            ? 'Players are eliminated after a single loss. The winner advances to the championship.' 
-            : tournament.format === 'DOUBLE_ELIMINATION'
-              ? 'Players must lose twice to be eliminated. Losers move to a separate bracket for a second chance.'
-              : tournament.format === 'ROUND_ROBIN'
-                ? 'Each participant plays against every other participant once.'
-                : 'Participants play a predetermined number of rounds against opponents with similar records.'}
-        </p>
-      </div>
+    <div className="challonge-like-bracket-container" ref={bracketRef}>
+      <style jsx>{`
+        .challonge-like-bracket-container {
+          position: relative; /* For SVG positioning */
+          display: flex;
+          flex-direction: column;
+          gap: 32px; /* 2rem */
+          padding: 32px;
+          background: #1a1a1a; /* Dark background */
+          color: #e5e7eb; /* Light text */
+          overflow-x: auto; /* Allow horizontal scrolling for large brackets */
+        }
+        .bracket-section {
+          /* border: 1px solid #374151; Optional: border around sections */
+        }
+        .bracket-section-title {
+          font-size: 1.5rem; /* 24px */
+          font-weight: 600;
+          color: #f3f4f6; /* Lighter title text */
+          margin-bottom: 1rem; /* 16px */
+          padding-bottom: 0.5rem; /* 8px */
+          border-bottom: 2px solid #4b5563; /* Gray border */
+        }
+        .rounds-container {
+          display: flex;
+          flex-direction: row;
+          gap: 32px; /* 2rem, spacing between round columns */
+          align-items: flex-start; /* Align rounds to the top */
+        }
+        .round {
+          display: flex;
+          flex-direction: column;
+          gap: 24px; /* 1.5rem, Spacing between matches in a round */
+          min-width: 250px; /* Width of a round column */
+        }
+        .round-title {
+          text-align: center;
+          font-size: 0.875rem; /* 14px */
+          font-weight: 500;
+          color: #9ca3af; /* Medium gray text */
+          margin-bottom: 0.75rem; /* 12px */
+          background-color: #374151; /* Darker gray for round title bg */
+          padding: 4px 8px;
+          border-radius: 4px;
+        }
+        .matches { /* Container for matches within a round */
+            display: flex;
+            flex-direction: column;
+            gap: 40px; /* Increased gap to account for connector lines */
+        }
+        .match-wrapper {
+           /* Styles for individual match component wrapper if needed */
+           /* The data-match-id attribute is used by the SVG connector logic */
+        }
+        
+        /* Styling for your actual Match.tsx component via :global if needed */
+        /* These are just examples, adjust to your Match.tsx structure */
+        :global(.match-component-container) { /* Assuming Match.tsx has a root div with this class */
+            background-color: #2d3748; /* Darker match background */
+            border: 1px solid #4a5567;
+            border-radius: 6px;
+            padding: 8px 12px;
+            min-height: 70px; /* Ensure matches have some height */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        :global(.match-component-header) {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #9ca3af;
+            margin-bottom: 4px;
+        }
+        :global(.match-component-participant) {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            font-size: 0.875rem;
+        }
+         :global(.match-component-participant.winner) {
+            font-weight: bold;
+            color: #68d391; /* Green for winner */
+        }
+        :global(.match-component-name) {
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px; /* Adjust as needed */
+        }
+        :global(.match-component-score) {
+            font-weight: bold;
+            min-width: 20px;
+            text-align: right;
+        }
+      `}</style>
+      
+      <svg 
+        ref={svgRef} 
+        style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          width: '100%', 
+          height: '100%', 
+          pointerEvents: 'none',
+          zIndex: 0, // Behind matches
+        }}
+      />
 
-      {/* Main bracket container with relative positioning to allow grand finals placement */}
-      <div className="relative" style={{ minHeight: '500px' }}>
-        {/* Bracket container with specified width to ensure space for grand finals */}
-        <div className="flex flex-col" style={{ width: isDoubleElimination ? 'calc(100% - 220px)' : '100%' }}>
-          {/* Winners bracket section */}
-          {regularWinnersMatches.length > 0 && renderBracketSection(regularWinnersMatches, "Winners Bracket")}
-          
-          {/* Losers bracket section for double elimination */}
-          {isDoubleElimination && losersMatches.length > 0 && renderBracketSection(losersMatches, "Losers Bracket", true)}
+      {winnersBracketMatches.length > 0 && (
+        <div className="bracket-section winners-bracket">
+          <h2 className="bracket-section-title">Winners Bracket</h2>
+          <div className="rounds-container">
+            {Object.keys(winnerMatchesByRound).map(roundNumStr => 
+              renderRound(Number(roundNumStr), winnerMatchesByRound[Number(roundNumStr)], "Winners")
+            )}
+          </div>
         </div>
-        
-        {/* Connection lines to grand finals */}
-        {isDoubleElimination && grandFinalMatches.length > 0 && renderGrandFinalConnections()}
-        
-        {/* Grand Finals section at the far right */}
-        {isDoubleElimination && grandFinalMatches.length > 0 && renderGrandFinalsSection()}
-      </div>
+      )}
+
+      {tournament.format === 'DOUBLE_ELIMINATION' && losersBracketMatches.length > 0 && (
+        <div className="bracket-section losers-bracket">
+          <h2 className="bracket-section-title">Losers Bracket</h2>
+          <div className="rounds-container">
+            {Object.keys(loserMatchesByRound).map(roundNumStr => 
+              renderRound(Number(roundNumStr), loserMatchesByRound[Number(roundNumStr)], "Losers")
+            )}
+          </div>
+        </div>
+      )}
+
+      {tournament.format === 'DOUBLE_ELIMINATION' && grandFinalsMatches.length > 0 && (
+        <div className="bracket-section grand-finals-wrapper">
+          <h2 className="bracket-section-title">Grand Finals</h2>
+          <div className="rounds-container"> {/* GF matches are typically in a single column */}
+            <div className="round"> {/* Mock round for GF layout */}
+                 {/* No round title needed for GF typically, or a generic one */}
+                <div className="matches">
+                    {grandFinalsMatches
+                        .sort((a,b) => a.match_number - b.match_number) // Sort by match_number if there are multiple (e.g. reset)
+                        .map(match => (
+                            <div className="match-wrapper" key={match.id} data-match-id={match.id}>
+                                <MatchComponent // Use your actual Match component here
+                                    match={{
+                                        ...match,
+                                        participant1: match.participant1_id ? participantsById[match.participant1_id] : { id: 'tbdGF1', participant_name: 'Winner WB' },
+                                        participant2: match.participant2_id ? participantsById[match.participant2_id] : { id: 'tbdGF2', participant_name: 'Winner LB' },
+                                    }}
+                                    onClick={onMatchClick}
+                                />
+                            </div>
+                    ))}
+                </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default BracketViewer; 
+export default ChallongeLikeBracket;

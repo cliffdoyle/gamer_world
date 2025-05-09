@@ -1,8 +1,8 @@
 import React from 'react';
-import SingleEliminationBracket from './SingleEliminationBracket';
-import DoubleEliminationBracket from './DoubleEliminationBracket';
+// import SingleEliminationBracket from './SingleEliminationBracket'; // Not needed if ChallongeLikeBracket handles SE
+// import DoubleEliminationBracket from './DoubleEliminationBracket'; // Old name
+import ChallongeLikeBracket from './ChallongeLikeBracket'; // Use the new/refactored component
 import RoundRobinTable from './RoundRobinTable';
-import ChallongeLikeBracket from './ChallongeLikeBracket';
 import { Tournament, Match, Participant } from '@/types/tournament';
 
 interface BracketRendererProps {
@@ -51,4 +51,4 @@ const BracketRenderer: React.FC<BracketRendererProps> = ({
   }
 };
 
-export default BracketRenderer; 
+export default BracketRenderer;

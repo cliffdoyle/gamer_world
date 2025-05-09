@@ -20,7 +20,10 @@ func (g *DoubleElimGenerator) GenerateDouble(ctx context.Context, tournaID uuid.
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	loserRounds := make([][]*domain.Match, 0)
+	loserRounds,err :=g.GenerateLosers(ctx,tournaID,winnerRounds)
+	if err !=nil{
+		return nil,nil,nil,err
+	}
 
 	allMatches := make([]*domain.Match, 0)
 	allMatches = append(allMatches, winnersMatches...)
@@ -28,7 +31,7 @@ func (g *DoubleElimGenerator) GenerateDouble(ctx context.Context, tournaID uuid.
 	return allMatches, winnerRounds, loserRounds, nil
 }
 
-func (g *SingleEliminationGenerator) GenerateLosers(ctx context.Context, tournamentID uuid.UUID, winnerRounds [][]*domain.Match) ([][]*domain.Match, error) {
+func (g *DoubleElimGenerator) GenerateLosers(ctx context.Context, tournamentID uuid.UUID, winnerRounds [][]*domain.Match) ([][]*domain.Match, error) {
 	if len(winnerRounds) < 2 {
 		return nil, errors.New("cannot generate loser's bracket with less than 2 winner rounds")
 	}
@@ -45,8 +48,8 @@ func (g *SingleEliminationGenerator) GenerateLosers(ctx context.Context, tournam
 	}
 
 	// Step 2: Create LB Round 1
-	lbFirstRound := []*domain.Match{}
-	byePlayers := []*uuid.UUID{}
+	lbFirstRound := make([]*domain.Match,0)
+	byePlayers := make([]*uuid.UUID,0)
 
 	for i := 0; i < len(firstRoundLosers); i += 2 {
 		if i+1 < len(firstRoundLosers) {
@@ -54,8 +57,8 @@ func (g *SingleEliminationGenerator) GenerateLosers(ctx context.Context, tournam
 				TournamentID:   tournamentID,
 				MatchNumber:    matchCounter,
 				Round:          1,
-				Participant1ID: firstRoundLosers[i],
-				Participant2ID: firstRoundLosers[i+1],
+				// Participant1ID: firstRoundLosers[i],
+				// Participant2ID: firstRoundLosers[i+1],
 				BracketType:    domain.LosersBracket,
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),
@@ -74,7 +77,7 @@ func (g *SingleEliminationGenerator) GenerateLosers(ctx context.Context, tournam
 	currentByes := byePlayers
 
 	for roundIndex := 1; roundIndex < len(winnerRounds); roundIndex++ {
-		currentPlayers := []*uuid.UUID{}
+		currentPlayers := make([]*uuid.UUID,0)
 
 		// 1. Add winners from previous LB round (placeholders now, filled later)
 		for _, match := range prevRound {

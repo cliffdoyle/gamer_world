@@ -9,6 +9,7 @@ import (
 
 	"github.com/cliffdoyle/tournament-service/internal/domain"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // MatchRepository defines methods for match database operations
@@ -45,6 +46,14 @@ func (r *matchRepository) Create(ctx context.Context, match *domain.Match) error
 		return err
 	}
 
+	// Convert PreviousMatchIDs to an array
+	// var prevMatchIDsArray pq.StringArray
+	// if match.PreviousMatchIDs != nil {
+	// 	for _, id := range match.PreviousMatchIDs {
+	// 		prevMatchIDsArray = append(prevMatchIDsArray, id.String())
+	// 	}
+	// }
+
 	// Execute SQL insert
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO matches (
@@ -54,10 +63,10 @@ func (r *matchRepository) Create(ctx context.Context, match *domain.Match) error
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
 			next_match_id, loser_next_match_id, created_at, updated_at,
-			match_notes, match_proofs
+			match_notes, match_proofs, bracket_type
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18, $19
+			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20
 		)
 	`,
 		match.ID,
@@ -79,6 +88,8 @@ func (r *matchRepository) Create(ctx context.Context, match *domain.Match) error
 		match.UpdatedAt,
 		match.MatchNotes,
 		proofsJSON,
+		match.BracketType,
+		// prevMatchIDsArray,
 	)
 
 	return err
@@ -89,6 +100,7 @@ func (r *matchRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ma
 	var (
 		match      domain.Match
 		proofsJSON []byte
+		// prevMatchIDsArray []string
 	)
 
 	err := r.db.QueryRowContext(ctx, `
@@ -99,7 +111,7 @@ func (r *matchRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ma
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
 			next_match_id, loser_next_match_id, created_at, updated_at,
-			match_notes, match_proofs
+			match_notes, match_proofs, bracket_type
 		FROM matches
 		WHERE id = $1
 	`, id).Scan(
@@ -122,6 +134,8 @@ func (r *matchRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ma
 		&match.UpdatedAt,
 		&match.MatchNotes,
 		&proofsJSON,
+		&match.BracketType,
+		// &prevMatchIDsArray,
 	)
 
 	if err == sql.ErrNoRows {
@@ -137,6 +151,15 @@ func (r *matchRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ma
 			return nil, err
 		}
 	}
+
+	// Convert previous match IDs from array of strings to UUIDs
+	// for _, strID := range prevMatchIDsArray {
+	// 	id, err := uuid.Parse(strID)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	match.PreviousMatchIDs = append(match.PreviousMatchIDs, id)
+	// }
 
 	return &match, nil
 }
@@ -338,6 +361,7 @@ func (r *matchRepository) GetByParticipant(ctx context.Context, tournamentID, pa
 }
 
 // Update updates a match in the database
+// Update updates a match in the database
 func (r *matchRepository) Update(ctx context.Context, match *domain.Match) error {
 	// Update timestamp
 	match.UpdatedAt = time.Now()
@@ -345,7 +369,7 @@ func (r *matchRepository) Update(ctx context.Context, match *domain.Match) error
 	// Convert match proofs to JSON
 	proofsJSON, err := json.Marshal(match.MatchProofs)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal match proofs for update: %w", err)
 	}
 
 	// Execute SQL update
@@ -364,37 +388,47 @@ func (r *matchRepository) Update(ctx context.Context, match *domain.Match) error
 			loser_next_match_id = $11,
 			updated_at = $12,
 			match_notes = $13,
-			match_proofs = $14
-		WHERE id = $15
+			match_proofs = $14,
+			bracket_type = $15 
+			-- If you add previous_match_ids here, adjust placeholders below too
+		WHERE id = $16 -- Corrected placeholder for id
 	`,
-		match.Participant1ID,
-		match.Participant2ID,
-		match.WinnerID,
-		match.LoserID,
-		match.ScoreParticipant1,
-		match.ScoreParticipant2,
-		match.Status,
-		match.ScheduledTime,
-		match.CompletedTime,
-		match.NextMatchID,
-		match.LoserNextMatchID,
-		match.UpdatedAt,
-		match.MatchNotes,
-		proofsJSON,
-		match.ID,
+		match.Participant1ID,    // $1
+		match.Participant2ID,    // $2
+		match.WinnerID,          // $3
+		match.LoserID,           // $4
+		match.ScoreParticipant1, // $5
+		match.ScoreParticipant2, // $6
+		match.Status,            // $7
+		match.ScheduledTime,     // $8
+		match.CompletedTime,     // $9
+		match.NextMatchID,       // $10
+		match.LoserNextMatchID,  // $11
+		match.UpdatedAt,         // $12
+		match.MatchNotes,        // $13
+		proofsJSON,              // $14
+		match.BracketType,       // $15
+		// prevMatchIDsArray,    // If used, this would be $16, and id would be $17
+		match.ID, // $16 (for WHERE clause)
 	)
-
 	if err != nil {
-		return err
+		// Check for specific pq error if it helps
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf("failed to update match SQL error (%s: %s): %w", pqErr.Code, pqErr.Message, err)
+		}
+		return fmt.Errorf("failed to update match: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get rows affected after update: %w", err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("match not found: %v", match.ID)
+		// It's possible that an update affects 0 rows if the data hasn't actually changed
+		// and the DB optimizes it, or if the WHERE condition isn't met.
+		// For an ID based update, this usually means "not found".
+		return fmt.Errorf("match not found for update (or no changes made): %v", match.ID)
 	}
 
 	return nil

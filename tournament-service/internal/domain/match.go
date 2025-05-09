@@ -16,6 +16,14 @@ const (
 	MatchCancelled  MatchStatus = "CANCELLED"
 )
 
+type BracketType string
+
+const (
+	WinnersBracket BracketType = "WINNERS"
+	LosersBracket  BracketType = "LOSERS"
+	GrandFinals    BracketType = "GRAND_FINALS"
+)
+
 // Match represents a tournament match
 type Match struct {
 	ID                uuid.UUID   `json:"id"`
@@ -37,6 +45,8 @@ type Match struct {
 	UpdatedAt         time.Time   `json:"updated_at"`
 	MatchNotes        string      `json:"match_notes,omitempty"`
 	MatchProofs       []string    `json:"match_proofs,omitempty"`
+	BracketType       BracketType    `json:"bracket_type"`       // WINNERS, LOSERS, GRAND_FINALS
+	// PreviousMatchIDs  []uuid.UUID    `json:"previous_match_ids"` // for traceability
 }
 
 // MatchResponse represents the API response for a match
