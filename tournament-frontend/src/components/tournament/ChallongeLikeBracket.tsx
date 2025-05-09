@@ -201,7 +201,8 @@ const ChallongeLikeBracket: React.FC<ChallongeLikeBracketProps> = ({
   const maxLoserRound = useMemo(() => Math.max(0, ...Object.keys(loserMatchesByRound).map(Number).filter(isFinite)), [loserMatchesByRound]);
 
  useEffect(() => {
-    const timerId = setTimeout(() => {
+    let rafId: number;
+    const drawSVG = () => {
         if (!bracketContainerRef.current || !svgRef.current) {
             console.warn("SVG draw: Refs not available yet.");
             return;
@@ -265,8 +266,9 @@ const ChallongeLikeBracket: React.FC<ChallongeLikeBracketProps> = ({
         });
         svg.style.width = `${bracketContainer.scrollWidth}px`;
         svg.style.height = `${bracketContainer.scrollHeight}px`;
-    }, 100);
-    return () => clearTimeout(timerId);
+    };
+    rafId = window.requestAnimationFrame(drawSVG);
+    return () => window.cancelAnimationFrame(rafId);
   }, [processedMatches]);
 
 
@@ -325,29 +327,199 @@ const ChallongeLikeBracket: React.FC<ChallongeLikeBracketProps> = ({
   return (
     <div className="challonge-like-bracket-container" ref={bracketContainerRef}>
       <style jsx>{`
-        /* CSS styles from previous message */
-        .challonge-like-bracket-container { position: relative; display: flex; flex-direction: column; gap: 48px; padding: 20px; background: #2d2d2d; color: #e5e7eb; overflow: auto; font-family: 'Roboto', 'Arial', sans-serif; }
-        .main-brackets-wrapper { display: flex; flex-direction: row; gap: 16px; align-items: flex-start; }
-        .bracket-layout { display: flex; flex-direction: column; gap: 48px; }
-        .bracket-section { display: flex; flex-direction: column; }
-        .bracket-section-title { font-size: 1rem; font-weight: 500; color: #f8720d; margin-bottom: 12px; text-transform: uppercase; padding-left: 8px; }
-        .rounds-container { display: flex; flex-direction: row; gap: ${HORIZONTAL_SPACING}px; align-items: flex-start; padding-top: 20px; padding-bottom: 20px; }
-        .round-column { display: flex; flex-direction: column; gap: ${VERTICAL_SPACING}px; min-width: ${MATCH_WIDTH}px; align-items: center; }
-        .round-title { text-align: center; font-size: 0.75rem; font-weight: 400; color: #aaa; margin-bottom: 12px; background-color: #333333; padding: 2px 6px; border-radius: 3px; width: fit-content; min-width: 100px; }
-        .matches-in-column { display: flex; flex-direction: column; gap: ${VERTICAL_SPACING}px; width: 100%; }
-        .match-wrapper { width: ${MATCH_WIDTH}px; height: ${MATCH_HEIGHT}px; display: flex; justify-content: center; align-items: center; }
-        .grand-finals-column { display: flex; flex-direction: column; gap: ${VERTICAL_SPACING}px; min-width: ${MATCH_WIDTH}px; align-items: center; margin-left: ${HORIZONTAL_SPACING}px; }
-        :global(.match-component-container) { background-color: #3c3c3c; border: 1px solid #444444; border-radius: 3px; padding: 0px; width: ${MATCH_WIDTH}px; height: ${MATCH_HEIGHT}px; display: flex; flex-direction: column; justify-content: flex-start; font-size: 13px; color: #bbbbbb; box-shadow: 0 1px 2px rgba(0,0,0,0.2); position: relative; }
-        :global(.match-component-header) { position: absolute; top: 2px; left: 6px; font-size: 10px; color: #777777; line-height: 1; z-index: 1; }
-        :global(.match-component-participant) { display: flex; align-items: center; height: calc(50% - 1px); padding: 0 6px; box-sizing: border-box; }
-        :global(.match-component-participant.top-player) { padding-top: 12px; }
-        :global(.match-component-participant.bottom-player) { border-top: 1px solid #4f4f4f; }
-        :global(.match-component-participant.winner .match-component-name) { font-weight: bold; color: #ffffff; }
-        :global(.match-component-participant.winner .match-component-score) { font-weight: bold; color: #ffffff; }
-        :global(.match-component-seed) { font-size: 10px; color: #888888; background-color: #333333; min-width: 18px; max-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; margin-right: 6px; border-radius: 2px; text-align: center; line-height: 18px; flex-shrink: 0; }
-        :global(.match-component-name) { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; max-width: calc(100% - 24px - 20px - 12px); }
-        :global(.match-component-score) { font-weight: bold; color: #ededed; min-width: 20px; text-align: right; padding-left: 5px; font-size: 13px; flex-shrink: 0; }
-        :global(.match-component-container:hover) { border-color: #f8720d; }
+        .challonge-like-bracket-container {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 48px;
+          padding: 20px;
+          background: #2d2d2d;
+          color: #e5e7eb;
+          overflow-x: auto;
+          overflow-y: auto;
+          min-width: 100vw;
+          min-height: 100vh;
+          font-family: 'Roboto', 'Arial', sans-serif;
+        }
+        .main-brackets-wrapper {
+          display: flex;
+          flex-direction: row;
+          gap: 32px;
+          align-items: flex-start;
+          min-width: 100vw;
+        }
+        .bracket-layout {
+          display: flex;
+          flex-direction: column;
+          gap: 48px;
+        }
+        .bracket-section {
+          display: flex;
+          flex-direction: column;
+        }
+        .bracket-section-title {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: #f8720d;
+          margin-bottom: 12px;
+          text-transform: uppercase;
+          padding-left: 8px;
+          letter-spacing: 1px;
+        }
+        .rounds-container {
+          display: flex;
+          flex-direction: row;
+          gap: ${HORIZONTAL_SPACING}px;
+          align-items: flex-start;
+          padding-top: 20px;
+          padding-bottom: 20px;
+        }
+        .round-column {
+          display: flex;
+          flex-direction: column;
+          gap: ${VERTICAL_SPACING}px;
+          min-width: ${MATCH_WIDTH}px;
+          align-items: center;
+        }
+        .round-title {
+          text-align: center;
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: #aaa;
+          margin-bottom: 12px;
+          background-color: #333333;
+          padding: 4px 10px;
+          border-radius: 3px;
+          width: fit-content;
+          min-width: 120px;
+        }
+        .matches-in-column {
+          display: flex;
+          flex-direction: column;
+          gap: ${VERTICAL_SPACING}px;
+          width: 100%;
+        }
+        .match-wrapper {
+          min-width: ${MATCH_WIDTH}px;
+          min-height: ${MATCH_HEIGHT}px;
+          width: ${MATCH_WIDTH}px;
+          height: ${MATCH_HEIGHT}px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .grand-finals-column {
+          display: flex;
+          flex-direction: column;
+          gap: ${VERTICAL_SPACING}px;
+          min-width: ${MATCH_WIDTH}px;
+          align-items: center;
+          margin-left: ${HORIZONTAL_SPACING}px;
+        }
+        :global(.match-component-container) {
+          background-color: #3c3c3c;
+          border: 1.5px solid #444444;
+          border-radius: 4px;
+          padding: 0px;
+          width: ${MATCH_WIDTH}px;
+          height: ${MATCH_HEIGHT}px;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+          font-size: 1rem;
+          color: #bbbbbb;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+          position: relative;
+          transition: border-color 0.2s;
+        }
+        :global(.match-component-header) {
+          position: absolute;
+          top: 2px;
+          left: 6px;
+          font-size: 0.7rem;
+          color: #777777;
+          line-height: 1;
+          z-index: 1;
+        }
+        :global(.match-component-participant) {
+          display: flex;
+          align-items: center;
+          height: calc(50% - 1px);
+          padding: 0 6px;
+          box-sizing: border-box;
+        }
+        :global(.match-component-participant.top-player) {
+          padding-top: 12px;
+        }
+        :global(.match-component-participant.bottom-player) {
+          border-top: 1px solid #4f4f4f;
+        }
+        :global(.match-component-participant.winner .match-component-name) {
+          font-weight: bold;
+          color: #ffffff;
+        }
+        :global(.match-component-participant.winner .match-component-score) {
+          font-weight: bold;
+          color: #ffffff;
+        }
+        :global(.match-component-seed) {
+          font-size: 0.8rem;
+          color: #888888;
+          background-color: #333333;
+          min-width: 18px;
+          max-width: 18px;
+          height: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-right: 6px;
+          border-radius: 2px;
+          text-align: center;
+          line-height: 18px;
+          flex-shrink: 0;
+        }
+        :global(.match-component-name) {
+          flex-grow: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          line-height: 1.2;
+          max-width: calc(100% - 24px - 20px - 12px);
+        }
+        :global(.match-component-score) {
+          font-weight: bold;
+          color: #ededed;
+          min-width: 20px;
+          text-align: right;
+          padding-left: 5px;
+          font-size: 1rem;
+          flex-shrink: 0;
+        }
+        :global(.match-component-container:hover) {
+          border-color: #f8720d;
+        }
+        @media (max-width: 900px) {
+          .challonge-like-bracket-container {
+            padding: 8px;
+            gap: 16px;
+          }
+          .main-brackets-wrapper {
+            gap: 8px;
+          }
+          .bracket-section-title {
+            font-size: 0.95rem;
+          }
+          .round-title {
+            font-size: 0.8rem;
+            min-width: 80px;
+          }
+          .match-wrapper, :global(.match-component-container) {
+            min-width: 150px;
+            width: 150px;
+            min-height: 50px;
+            height: 50px;
+          }
+        }
       `}</style>
 
       <svg

@@ -22,9 +22,9 @@ interface ExtendedMatch extends Match {
   bracket?: BracketType;
 }
 
-export default function TournamentDetailPage({ params }: { params: { id: string } }) {
-  // Directly use params.id instead of wrapping with React.use()
-  const tournamentId = params.id;
+export default function TournamentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // Unwrap params using React.use() as required by Next.js app router
+  const { id: tournamentId } = React.use(params);
   
   const router = useRouter();
   const { token } = useAuth();

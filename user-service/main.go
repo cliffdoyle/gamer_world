@@ -18,11 +18,11 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 	database.Connect()
+
 	r := gin.Default()
 
-	// Add CORS middleware
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000"}
+	config.AllowOrigins = []string{"http://localhost:3000"} // Update for production
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	r.Use(cors.New(config))
@@ -31,21 +31,28 @@ func main() {
 		c.JSON(200, gin.H{"status": "User service is Up!"})
 	})
 
-	//Public routes
-	r.POST("/register", handlers.Register)
-	r.POST("/login", handlers.Login)
-
-	//Protected routes
-	userGroup := r.Group("/user")
-	userGroup.Use(middleware.AuthMiddleware())
+	// Public auth routes
+	authRoutes := r.Group("/auth")
 	{
-		userGroup.GET("/profile", handlers.GetUserProfile)
-		userGroup.PUT("/profile", handlers.UpdateUserProfile)
-		userGroup.DELETE("/profile", handlers.DeleteUserAccount)
+		authRoutes.POST("/register", handlers.Register)
+		authRoutes.POST("/login", handlers.Login)
+		authRoutes.POST("/google/signin", handlers.GoogleSignIn) // New route for Google Sign-In
 	}
 
-	log.Println("User service is running on port:", os.Getenv("SERVER_PORT"))
-	// Start the server
+	// Protected user routes (profile related)
+	userRoutes := r.Group("/user")
+	userRoutes.Use(middleware.AuthMiddleware()) // Assuming AuthMiddleware verifies your platform's JWT
+	{
+		userRoutes.GET("/profile", handlers.GetUserProfile)
+		userRoutes.PUT("/profile", handlers.UpdateUserProfile)
+		userRoutes.DELETE("/account", handlers.DeleteUserAccount) // Changed from /profile to /account for clarity
+	}
 
-	r.Run(":" + os.Getenv("SERVER_PORT"))
+	port := os.Getenv("SERVER_PORT")
+	if port == "" {
+		port = "8081" // Default port if not set
+		log.Printf("Defaulting to port %s", port)
+	}
+	log.Printf("User service is running on port: %s", port)
+	r.Run(":" + port)
 }

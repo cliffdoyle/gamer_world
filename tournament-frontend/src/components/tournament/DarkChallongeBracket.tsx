@@ -1,11 +1,44 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Match, Tournament, Participant, TournamentFormat } from '@/types/tournament';
+import React, { useEffect, useState, useRef, ReactNode } from 'react';
+
+// Defined tournament types (similar to what would be in @/types/tournament)
+interface Participant {
+  id: string;
+  participant_name: string;
+  seed?: number;
+}
+
+interface Match {
+  id: string;
+  round: number;
+  match_number: number;
+  participant1_id: string | null;
+  participant2_id: string | null;
+  winner_id: string | null;
+  next_match_id: string | null;
+  loser_next_match_id: string | null;
+  participant1_prereq_match_id: string | null;
+  participant2_prereq_match_id: string | null;
+  score_participant1: string | null;
+  score_participant2: string | null;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  bracket_type?: string;
+}
+
+type TournamentFormat = 'SINGLE_ELIMINATION' | 'DOUBLE_ELIMINATION';
+
+interface Tournament {
+  id: string;
+  name: string;
+  format: TournamentFormat;
+}
 
 type BracketType = 'WINNERS' | 'LOSERS' | null;
 
 interface ExtendedMatch extends Match {
   isGrandFinal?: boolean;
   bracket?: BracketType;
+  winner_source_match_id?: string | null;
+  loser_source_match_id?: string | null;
 }
 
 interface DarkChallongeBracketProps {
@@ -15,31 +48,48 @@ interface DarkChallongeBracketProps {
   onMatchClick?: (match: Match) => void;
 }
 
-const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({ 
+const DarkChallongeBracket = ({ 
   tournament, 
   matches, 
   participants,
   onMatchClick
-}) => {
+}: DarkChallongeBracketProps): ReactNode => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [processedMatches, setProcessedMatches] = useState<ExtendedMatch[]>([]);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(900);
+  const [containerHeight, setContainerHeight] = useState(600);
   const [matchPositions, setMatchPositions] = useState<Record<string, { x: number, y: number, width: number, height: number }>>({});
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
 
   // Constants for layout - Challonge dimensions
   const MATCH_WIDTH = 160;
   const MATCH_HEIGHT = 40;
-  const COLUMN_GAP = 40;
-  const MATCH_SPACING = 15; // Vertical gap between matches
+  const COLUMN_GAP = 80;
+  const MATCH_SPACING = 20; // Vertical gap between matches in the same round
   
   useEffect(() => {
     // Process matches to add bracket types and other metadata
-    const processed = prepareBracketData(matches, tournament.format);
+    const processed = prepareBracketData(matches, tournament.format, participants.length);
     setProcessedMatches(processed);
     
     // Calculate layout dimensions
     calculateLayout(processed);
+    
+    // Handle window resize
+    const handleResize = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   }, [matches, tournament, participants]);
 
   const calculateLayout = (processed: ExtendedMatch[]) => {
@@ -49,71 +99,79 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
     const grandFinals = processed.filter(m => m.isGrandFinal);
     
     // Find max rounds
-    const winnersMaxRound = Math.max(...winners.map(m => m.round), 0);
-    const losersMaxRound = Math.max(...losers.map(m => m.round), 0);
+    const winnersMaxRound = Math.max(0, ...winners.map(m => m.round));
+    const losersMaxRound = losers.length > 0 ? Math.max(0, ...losers.map(m => m.round)) : 0;
     
     // Calculate required width
-    const width = Math.max(
-      winners.length > 0 ? (winnersMaxRound * (MATCH_WIDTH + COLUMN_GAP)) : 0,
-      losers.length > 0 ? (losersMaxRound * (MATCH_WIDTH + COLUMN_GAP)) : 0
-    ) + (grandFinals.length > 0 ? MATCH_WIDTH + COLUMN_GAP : 0);
+    const totalRounds = Math.max(winnersMaxRound, losersMaxRound) + (grandFinals.length > 0 ? 1 : 0);
+    const width = totalRounds * (MATCH_WIDTH + COLUMN_GAP) + 60; // Added padding
     
     // Calculate match positions
     const positions: Record<string, { x: number, y: number, width: number, height: number }> = {};
     
     // Position winners bracket
+    let maxWinnersY = 0;
     winners.forEach(match => {
-      const matchesInRound = winners.filter(m => m.round === match.round);
+      if (match.isGrandFinal) return; // Skip grand finals for now
+      
+      const matchesInRound = winners.filter(m => m.round === match.round && !m.isGrandFinal);
       const matchIndex = matchesInRound.findIndex(m => m.id === match.id);
       
       // Calculate spacing between matches in this round
-      const spacing = MATCH_SPACING * Math.pow(2, winnersMaxRound - match.round);
+      const totalMatches = Math.pow(2, winnersMaxRound - match.round + 1) / 2;
+      const roundSpacing = totalMatches <= 1 ? MATCH_SPACING : MATCH_SPACING * Math.pow(2, match.round - 1);
+      
+      // Calculate vertical spread based on round number
+      const yMultiplier = Math.pow(2, winnersMaxRound - match.round);
       
       // Calculate y position with Challonge-style spacing
-      const yPosition = 40 + matchIndex * (MATCH_HEIGHT + spacing);
+      const yPosition = 60 + matchIndex * (MATCH_HEIGHT + roundSpacing) * yMultiplier;
       
       positions[match.id] = {
-        x: (match.round - 1) * (MATCH_WIDTH + COLUMN_GAP) + 20,
+        x: (match.round - 1) * (MATCH_WIDTH + COLUMN_GAP) + 30,
         y: yPosition,
         width: MATCH_WIDTH,
         height: MATCH_HEIGHT
       };
+      
+      maxWinnersY = Math.max(maxWinnersY, yPosition + MATCH_HEIGHT);
     });
     
     // Position losers bracket
-    const winnersBracketHeight = winners.length > 0 
-      ? Math.max(...winners.map(m => positions[m.id]?.y + positions[m.id]?.height || 0))
-      : 0;
-    
-    const losersYStart = winnersBracketHeight + 50;
-    
-    losers.forEach(match => {
-      const matchesInRound = losers.filter(m => m.round === match.round);
-      const matchIndex = matchesInRound.findIndex(m => m.id === match.id);
+    if (losers.length > 0) {
+      const losersYStart = maxWinnersY + 80; // Gap between winners and losers bracket
       
-      // Calculate spacing between matches in this round
-      const spacing = MATCH_SPACING * Math.pow(1.5, losersMaxRound - match.round);
+      // Group losers matches by round
+      const loserRounds = [...new Set(losers.map(m => m.round))].sort((a, b) => a - b);
       
-      // Calculate y position with proper spacing
-      const yPosition = losersYStart + matchIndex * (MATCH_HEIGHT + spacing);
-      
-      positions[match.id] = {
-        x: (match.round - 1) * (MATCH_WIDTH + COLUMN_GAP) + 20,
-        y: yPosition,
-        width: MATCH_WIDTH,
-        height: MATCH_HEIGHT
-      };
-    });
+      loserRounds.forEach((round, roundIndex) => {
+        const matchesInRound = losers.filter(m => m.round === round);
+        
+        matchesInRound.forEach((match, matchIndex) => {
+          // For each losers round, calculate an appropriate vertical spread
+          // In Challonge, losers rounds are more compact than winners bracket
+          const yPosition = losersYStart + matchIndex * (MATCH_HEIGHT + MATCH_SPACING);
+          
+          positions[match.id] = {
+            x: (round - 1) * (MATCH_WIDTH + COLUMN_GAP) + 30,
+            y: yPosition,
+            width: MATCH_WIDTH,
+            height: MATCH_HEIGHT
+          };
+        });
+      });
+    }
     
     // Position grand finals
     if (grandFinals.length > 0) {
-      const gfXPosition = width - MATCH_WIDTH - 20;
-      const midPoint = (winnersBracketHeight / 2) - (MATCH_HEIGHT / 2);
+      const finalRound = Math.max(winnersMaxRound, losersMaxRound) + 1;
+      const finalXPosition = (finalRound - 1) * (MATCH_WIDTH + COLUMN_GAP) + 30;
+      const finalYPosition = 60 + Math.pow(2, winnersMaxRound - 1) * (MATCH_HEIGHT + MATCH_SPACING) * 0.5 - MATCH_HEIGHT / 2;
       
       grandFinals.forEach((match, idx) => {
         positions[match.id] = {
-          x: gfXPosition,
-          y: midPoint + (idx * (MATCH_HEIGHT + 20)),
+          x: finalXPosition,
+          y: finalYPosition + idx * (MATCH_HEIGHT + MATCH_SPACING),
           width: MATCH_WIDTH,
           height: MATCH_HEIGHT
         };
@@ -121,66 +179,126 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
     }
     
     // Calculate container dimensions
-    const maxY = Object.values(positions).reduce((max, pos) => Math.max(max, pos.y + pos.height), 0);
-    setContainerWidth(width + 40);
-    setContainerHeight(maxY + 40);
+    const maxY = Math.max(0, ...Object.values(positions).map(p => p.y + p.height));
+    setContainerWidth(width);
+    setContainerHeight(maxY + 60);
     setMatchPositions(positions);
   };
 
   // Prepare bracket data by adding bracket types and other metadata
   const prepareBracketData = (
-    matches: Match[], 
-    tournamentFormat: TournamentFormat | undefined
+    initialMatches: Match[], 
+    tournamentFormat: TournamentFormat | undefined,
+    numParticipants: number
   ): ExtendedMatch[] => {
-    if (!tournamentFormat) return matches as ExtendedMatch[];
+    if (!tournamentFormat) return initialMatches as ExtendedMatch[];
     
-    // Calculate maximum round
-    const maxRound = Math.max(...matches.map(m => m.round), 0);
-
-    // First pass - assign brackets based on tournament format
-    const withBrackets = matches.map(match => {
-      if (match.bracket) return match as ExtendedMatch;
-
-      // For single elimination, all matches are in winners bracket
+    // First pass - identify bracket types
+    const withBrackets = initialMatches.map(match => {
+      const extended: ExtendedMatch = { ...match };
+      
+      // Set default properties
+      extended.bracket = null;
+      extended.isGrandFinal = false;
+      extended.winner_source_match_id = null;
+      extended.loser_source_match_id = null;
+      
+      // Assign bracket types based on tournament format
       if (tournamentFormat === 'SINGLE_ELIMINATION') {
-        return { ...match, bracket: 'WINNERS' as BracketType } as ExtendedMatch;
+        extended.bracket = 'WINNERS';
+      } else if (tournamentFormat === 'DOUBLE_ELIMINATION') {
+        if (match.round >= 999) {
+          extended.isGrandFinal = true;
+          extended.bracket = 'WINNERS';
+        } else if (match.bracket_type) {
+          extended.bracket = match.bracket_type as BracketType;
+        } else {
+          // In DOUBLE_ELIMINATION, try to infer bracket type
+          // This is a simplified heuristic - real tournaments might need more complex logic
+          const maxWinnersRound = Math.ceil(Math.log2(numParticipants));
+          
+          if (match.round <= maxWinnersRound) {
+            extended.bracket = 'WINNERS';
+          } else {
+            extended.bracket = 'LOSERS';
+          }
+        }
       }
-
-      // For double elimination, determine bracket based on round and structure
-      if (tournamentFormat === 'DOUBLE_ELIMINATION') {
-        const winnersRounds = Math.ceil(Math.log2(participants.length || 2));
-        const isLosers = match.round > winnersRounds;
+      
+      return extended;
+    });
+    
+    // Second pass - establish connections between matches
+    const withConnections = withBrackets.map(match => {
+      const result = { ...match };
+      
+      // Find matches that feed into this one
+      initialMatches.forEach(potentialSource => {
+        // Winner feeds into this match
+        if (potentialSource.next_match_id === match.id) {
+          result.winner_source_match_id = potentialSource.id;
+        }
         
-        return {
-          ...match,
-          bracket: isLosers ? 'LOSERS' : 'WINNERS' as BracketType
-        } as ExtendedMatch;
-      }
-
-      // Default
-      return { ...match, bracket: null } as ExtendedMatch;
+        // Loser feeds into this match (for losers bracket)
+        if (potentialSource.loser_next_match_id === match.id) {
+          result.loser_source_match_id = potentialSource.id;
+        }
+      });
+      
+      return result;
     });
-
-    // Second pass - identify grand finals for double elimination
-    return withBrackets.map(match => {
-      if (tournamentFormat !== 'DOUBLE_ELIMINATION') return match;
+    
+    // Third pass - grand finals detection
+    if (tournamentFormat === 'DOUBLE_ELIMINATION') {
+      // Find winners and losers finals
+      const winnersFinal = withConnections.find(m => 
+        m.bracket === 'WINNERS' && 
+        !m.next_match_id && 
+        !m.isGrandFinal &&
+        withConnections.every(other => 
+          other.bracket === 'WINNERS' && 
+          other.id !== m.id ? 
+          other.round <= m.round : true
+        )
+      );
       
-      // Grand finals is typically the last match in winners bracket with no next match
-      const isLastRound = match.round === maxRound;
-      const hasNoNextMatch = !matches.some(m => m.next_match_id === match.id);
+      const losersFinal = withConnections.find(m => 
+        m.bracket === 'LOSERS' && 
+        !m.next_match_id &&
+        withConnections.every(other => 
+          other.bracket === 'LOSERS' && 
+          other.id !== m.id ? 
+          other.round <= m.round : true
+        )
+      );
       
-      if (match.bracket === 'WINNERS' && isLastRound && hasNoNextMatch) {
-        return { ...match, isGrandFinal: true };
+      // Find or create grand finals
+      let grandFinal = withConnections.find(m => m.isGrandFinal);
+      
+      if (!grandFinal && winnersFinal && losersFinal) {
+        // If we don't have an explicit grand final but have winners and losers finals,
+        // we can create a virtual grand final for visualization purposes
+        const virtualGrandFinal: ExtendedMatch = {
+          ...winnersFinal,
+          id: 'virtual-grand-final',
+          match_number: 9999,
+          round: Math.max(winnersFinal.round, losersFinal.round) + 1,
+          isGrandFinal: true,
+          participant1_id: winnersFinal.winner_id,
+          participant2_id: losersFinal.winner_id,
+          winner_id: null,
+          next_match_id: null,
+          loser_next_match_id: null,
+          status: 'PENDING',
+          score_participant1: null,
+          score_participant2: null
+        };
+        
+        withConnections.push(virtualGrandFinal);
       }
-      
-      return match;
-    });
-  };
-
-  // Find match by ID
-  const findMatch = (id: string | null): ExtendedMatch | undefined => {
-    if (!id) return undefined;
-    return processedMatches.find(m => m.id === id);
+    }
+    
+    return withConnections;
   };
 
   // Get participant name by ID
@@ -199,90 +317,71 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
 
   // Draw connection lines between matches
   const renderConnectionLines = () => {
-    return processedMatches.filter(match => match.next_match_id).map(match => {
-      const nextMatch = findMatch(match.next_match_id);
-      if (!nextMatch || !matchPositions[match.id] || !matchPositions[nextMatch.id]) return null;
-      
-      const source = matchPositions[match.id];
-      const target = matchPositions[nextMatch.id];
-      
-      // Calculate connection points
-      const sourceX = source.x + source.width;
-      const sourceY = source.y + (source.height / 2);
-      const targetX = target.x;
-      const targetY = target.y + (target.height / 2);
-      
-      // Create Challonge-style horizontal and vertical lines
-      const midX = sourceX + (targetX - sourceX) / 2;
-      
-      return (
-        <path
-          key={`connection-${match.id}-${nextMatch.id}`}
-          d={`M ${sourceX} ${sourceY} H ${midX} V ${targetY} H ${targetX}`}
-          stroke="#4d4d4d"
-          strokeWidth="1"
-          fill="none"
-        />
-      );
-    });
-  };
-
-  // Draw grand finals connections
-  const renderGrandFinalsConnections = () => {
-    const grandFinals = processedMatches.filter(m => m.isGrandFinal);
-    if (grandFinals.length === 0) return null;
+    const lines: React.ReactElement[] = [];
     
-    const winnersBracket = processedMatches.filter(m => (m.bracket === 'WINNERS' || !m.bracket) && !m.isGrandFinal);
-    const losersBracket = processedMatches.filter(m => m.bracket === 'LOSERS');
-    
-    if (winnersBracket.length === 0 || losersBracket.length === 0) return null;
-    
-    const winnersFinalsMatch = winnersBracket.reduce((latest, match) => 
-      (!latest || match.round > latest.round) ? match : latest, winnersBracket[0]);
-      
-    const losersFinalsMatch = losersBracket.reduce((latest, match) => 
-      (!latest || match.round > latest.round) ? match : latest, losersBracket[0]);
-    
-    const grandFinalMatch = grandFinals[0];
-    
-    if (!matchPositions[winnersFinalsMatch.id] || !matchPositions[losersFinalsMatch.id] || !matchPositions[grandFinalMatch.id]) {
-      return null;
-    }
-    
-    const winnersSource = matchPositions[winnersFinalsMatch.id];
-    const losersSource = matchPositions[losersFinalsMatch.id];
-    const target = matchPositions[grandFinalMatch.id];
-    
-    return (
-      <>
-        {/* Winners finals to grand finals */}
-        <path
-          d={`M ${winnersSource.x + winnersSource.width} ${winnersSource.y + (winnersSource.height / 2)} 
-              H ${target.x - 10} V ${target.y + (target.height / 3)} H ${target.x}`}
-          stroke="#4d4d4d"
-          strokeWidth="1"
-          fill="none"
-        />
+    processedMatches.forEach(match => {
+      // Only render connections if both source and target positions are known
+      if (match.id in matchPositions) {
+        // Winner connections (next_match_id)
+        if (match.next_match_id && matchPositions[match.next_match_id]) {
+          const source = matchPositions[match.id];
+          const target = matchPositions[match.next_match_id];
+          
+          // Draw path from source to target
+          const sourceX = source.x + source.width;
+          const sourceY = source.y + source.height / 2;
+          const targetX = target.x;
+          const targetY = target.y + target.height / 2;
+          const midX = sourceX + (targetX - sourceX) / 2;
+          
+          lines.push(
+            <path
+              key={`winner-${match.id}-${match.next_match_id}`}
+              d={`M ${sourceX} ${sourceY} H ${midX} V ${targetY} H ${targetX}`}
+              stroke="#4d4d4d"
+              strokeWidth="1.5"
+              fill="none"
+            />
+          );
+        }
         
-        {/* Losers finals to grand finals */}
-        <path
-          d={`M ${losersSource.x + losersSource.width} ${losersSource.y + (losersSource.height / 2)} 
-              H ${target.x - 10} V ${target.y + (2 * target.height / 3)} H ${target.x}`}
-          stroke="#4d4d4d"
-          strokeWidth="1"
-          fill="none"
-        />
-      </>
-    );
+        // Loser connections (loser_next_match_id)
+        if (match.loser_next_match_id && matchPositions[match.loser_next_match_id]) {
+          const source = matchPositions[match.id];
+          const target = matchPositions[match.loser_next_match_id];
+          
+          // Draw path from source to target
+          const sourceX = source.x + source.width / 2;
+          const sourceY = source.y + source.height;
+          const targetX = target.x + target.width / 2;
+          const targetY = target.y;
+          
+          lines.push(
+            <path
+              key={`loser-${match.id}-${match.loser_next_match_id}`}
+              d={`M ${sourceX} ${sourceY} V ${(sourceY + targetY) / 2} H ${targetX} V ${targetY}`}
+              stroke="#ff4444"
+              strokeWidth="1.5"
+              fill="none"
+              strokeDasharray="4,2"
+            />
+          );
+        }
+      }
+    });
+    
+    return lines;
   };
 
-  // Render a single match in the exact Challonge dark theme style
+  // Render a single match
   const renderMatch = (match: ExtendedMatch) => {
-    const position = matchPositions[match.id];
-    if (!position) return null;
+    if (!(match.id in matchPositions)) return null;
     
+    const position = matchPositions[match.id];
     const isCompleted = match.status === 'COMPLETED';
-    const matchNumber = match.match_number;
+    const isPending = match.status === 'PENDING';
+    const isInProgress = match.status === 'IN_PROGRESS';
+    
     const participant1Seed = getParticipantSeed(match.participant1_id);
     const participant2Seed = getParticipantSeed(match.participant2_id);
     
@@ -293,7 +392,7 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
         onClick={() => onMatchClick && onMatchClick(match)}
         style={{ cursor: 'pointer' }}
       >
-        {/* Background */}
+        {/* Match box */}
         <rect
           x="0"
           y="0"
@@ -312,13 +411,12 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
           y={position.height / 2} 
           fontSize="10" 
           fill="#888888" 
-          textAnchor="start"
           dominantBaseline="middle"
         >
-          {matchNumber}
+          {match.match_number}
         </text>
         
-        {/* Divider between participants */}
+        {/* Divider line */}
         <line
           x1="0"
           y1={position.height / 2}
@@ -359,9 +457,7 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
             y={position.height / 4}
             fontSize="11"
             fill={match.winner_id === match.participant1_id ? "#ffffff" : "#bbbbbb"}
-            textAnchor="start"
             dominantBaseline="middle"
-            className="participant-name"
             fontWeight={match.winner_id === match.participant1_id ? "bold" : "normal"}
           >
             {getParticipantNameById(match.participant1_id)}
@@ -381,12 +477,12 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
             x={position.width - 15}
             y={position.height / 4}
             fontSize="11"
-            fontWeight={match.winner_id === match.participant1_id ? "bold" : "normal"}
             fill={match.winner_id === match.participant1_id ? "#ffffff" : "#bbbbbb"}
             textAnchor="middle"
             dominantBaseline="middle"
+            fontWeight={match.winner_id === match.participant1_id ? "bold" : "normal"}
           >
-            {match.score_participant1 ?? '-'}
+            {match.score_participant1 || '-'}
           </text>
         </g>
         
@@ -421,9 +517,7 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
             y={position.height * 3/4}
             fontSize="11"
             fill={match.winner_id === match.participant2_id ? "#ffffff" : "#bbbbbb"}
-            textAnchor="start"
             dominantBaseline="middle"
-            className="participant-name"
             fontWeight={match.winner_id === match.participant2_id ? "bold" : "normal"}
           >
             {getParticipantNameById(match.participant2_id)}
@@ -443,92 +537,169 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
             x={position.width - 15}
             y={position.height * 3/4}
             fontSize="11"
-            fontWeight={match.winner_id === match.participant2_id ? "bold" : "normal"}
             fill={match.winner_id === match.participant2_id ? "#ffffff" : "#bbbbbb"}
             textAnchor="middle"
             dominantBaseline="middle"
+            fontWeight={match.winner_id === match.participant2_id ? "bold" : "normal"}
           >
-            {match.score_participant2 ?? '-'}
+            {match.score_participant2 || '-'}
           </text>
         </g>
       </g>
     );
   };
 
-  // Render section headers (Main bracket, Losers bracket, etc.)
-  const renderSectionHeaders = () => {
-    const winners = processedMatches.filter(m => (m.bracket === 'WINNERS' || !m.bracket) && !m.isGrandFinal);
-    const losers = processedMatches.filter(m => m.bracket === 'LOSERS');
+  // Render round headers
+  const renderRoundHeaders = () => {
+    // Get unique rounds for winners and losers brackets
+    const winnersMatches = processedMatches.filter(m => (m.bracket === 'WINNERS' || !m.bracket) && !m.isGrandFinal);
+    const losersMatches = processedMatches.filter(m => m.bracket === 'LOSERS');
+    const grandFinals = processedMatches.filter(m => m.isGrandFinal);
     
-    // Get unique rounds
-    const winnerRounds = [...new Set(winners.map(m => m.round))].sort((a, b) => a - b);
-    const loserRounds = [...new Set(losers.map(m => m.round))].sort((a, b) => a - b);
+    const winnerRounds = [...new Set(winnersMatches.map(m => m.round))].sort((a, b) => a - b);
+    const loserRounds = [...new Set(losersMatches.map(m => m.round))].sort((a, b) => a - b);
     
-    return (
-      <>
-        {/* Main bracket header */}
-        {tournament.format === 'DOUBLE_ELIMINATION' ? (
-          <text x="10" y="24" fontSize="13" fontWeight="bold" fill="#f89406">Bracket</text>
-        ) : null}
+    const headers: React.ReactElement[] = [];
+    
+    // Render winners bracket headers
+    winnerRounds.forEach(round => {
+      const matchesInRound = winnersMatches.filter(m => m.round === round);
+      if (matchesInRound.length === 0 || !(matchesInRound[0].id in matchPositions)) return;
+      
+      const x = matchPositions[matchesInRound[0].id].x + MATCH_WIDTH / 2;
+      
+      let roundName: string;
+      if (tournament.format === 'DOUBLE_ELIMINATION') {
+        roundName = `Round ${round}`;
+      } else {
+        // For single elimination, use more descriptive names for final rounds
+        if (round === winnerRounds.length) {
+          roundName = 'Finals';
+        } else if (round === winnerRounds.length - 1) {
+          roundName = 'Semifinals';
+        } else if (round === winnerRounds.length - 2) {
+          roundName = 'Quarterfinals';
+        } else {
+          roundName = `Round ${round}`;
+        }
+      }
+      
+      headers.push(
+        <text
+          key={`header-winners-${round}`}
+          x={x}
+          y="30"
+          fontSize="12"
+          fill="#bbbbbb"
+          textAnchor="middle"
+        >
+          {roundName}
+        </text>
+      );
+    });
+    
+    // Render losers bracket headers
+    loserRounds.forEach(round => {
+      const matchesInRound = losersMatches.filter(m => m.round === round);
+      if (matchesInRound.length === 0 || !(matchesInRound[0].id in matchPositions)) return;
+      
+      const position = matchPositions[matchesInRound[0].id];
+      const x = position.x + MATCH_WIDTH / 2;
+      const y = position.y - 15;
+      
+      headers.push(
+        <text
+          key={`header-losers-${round}`}
+          x={x}
+          y={y}
+          fontSize="12"
+          fill="#bbbbbb"
+          textAnchor="middle"
+        >
+          {`Losers Round ${round}`}
+        </text>
+      );
+    });
+    
+    // Render grand finals header
+    if (grandFinals.length > 0 && grandFinals[0].id in matchPositions) {
+      const position = matchPositions[grandFinals[0].id];
+      const x = position.x + MATCH_WIDTH / 2;
+      
+      headers.push(
+        <text
+          key="header-grand-finals"
+          x={x}
+          y="30"
+          fontSize="12"
+          fill="#bbbbbb"
+          textAnchor="middle"
+        >
+          Finals
+        </text>
+      );
+    }
+    
+    return headers;
+  };
+
+  // Render bracket sections (Winners/Losers)
+  const renderBracketSections = () => {
+    const sections: React.ReactElement[] = [];
+    
+    // Only add explicit section headers for double elimination
+    if (tournament.format === 'DOUBLE_ELIMINATION') {
+      // Winners bracket header
+      sections.push(
+        <text
+          key="section-winners"
+          x="10"
+          y="30"
+          fontSize="14"
+          fill="#f89406"
+          fontWeight="bold"
+        >
+          Bracket
+        </text>
+      );
+      
+      // Losers bracket header
+      const losersMatches = processedMatches.filter(m => m.bracket === 'LOSERS');
+      if (losersMatches.length > 0 && losersMatches[0].id in matchPositions) {
+        const firstLosersMatch = matchPositions[losersMatches[0].id];
         
-        {/* Round headers for winners bracket */}
-        {winnerRounds.map(round => {
-          const matchesInRound = winners.filter(m => m.round === round);
-          if (matchesInRound.length === 0 || !matchPositions[matchesInRound[0].id]) return null;
-          
-          return (
-            <text
-              key={`round-header-${round}`}
-              x={matchPositions[matchesInRound[0].id].x + MATCH_WIDTH/2}
-              y="24"
-              fontSize="12"
-              textAnchor="middle"
-              fill="#bbbbbb"
-            >
-              {tournament.format === 'DOUBLE_ELIMINATION' ? 
-                `Round ${round}` : 
-                round === winnerRounds.length ? 'Finals' : 
-                round === winnerRounds.length - 1 ? 'Semifinals' : 
-                `Round ${round}`}
-            </text>
-          );
-        })}
-        
-        {/* Losers bracket header */}
-        {loserRounds.length > 0 && losers.length > 0 && matchPositions[losers[0].id] ? (
-          <>
-            <text 
-              x="10" 
-              y={matchPositions[losers[0].id].y - 15} 
-              fontSize="13" 
-              fontWeight="bold" 
-              fill="#f89406"
-            >
-              Losers Round 1
-            </text>
-            
-            {/* Losers round headers */}
-            {loserRounds.map(round => {
-              const matchesInRound = losers.filter(m => m.round === round);
-              if (matchesInRound.length === 0 || !matchPositions[matchesInRound[0].id]) return null;
-              
-              return (
-                <text
-                  key={`losers-round-header-${round}`}
-                  x={matchPositions[matchesInRound[0].id].x + MATCH_WIDTH/2}
-                  y={matchPositions[matchesInRound[0].id].y - 15}
-                  fontSize="12"
-                  textAnchor="middle"
-                  fill="#bbbbbb"
-                >
-                  Losers Round {round}
-                </text>
-              );
-            })}
-          </>
-        ) : null}
-      </>
-    );
+        sections.push(
+          <text
+            key="section-losers"
+            x="10"
+            y={firstLosersMatch.y - 15}
+            fontSize="14"
+            fill="#f89406"
+            fontWeight="bold"
+          >
+            Losers Round 1
+          </text>
+        );
+      }
+    }
+    
+    return sections;
+  };
+
+  // Handle zoom interactions
+  const handleZoom = (factor: number) => {
+    setScale(prevScale => Math.min(Math.max(0.5, prevScale * factor), 2));
+  };
+
+  // Handle pan interactions
+  const handlePan = (dx: number, dy: number) => {
+    setPan(prevPan => ({ x: prevPan.x + dx, y: prevPan.y + dy }));
+  };
+
+  // Reset zoom and pan
+  const resetView = () => {
+    setScale(1);
+    setPan({ x: 0, y: 0 });
   };
 
   return (
@@ -551,16 +722,8 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
           borderRadius: '4px'
         }}
       >
-        {/* Section headers */}
-        {renderSectionHeaders()}
-        
-        {/* Connection lines */}
+        {renderRoundHeaders()}
         {renderConnectionLines()}
-        
-        {/* Grand finals connections */}
-        {renderGrandFinalsConnections()}
-        
-        {/* Matches */}
         {processedMatches.map(match => renderMatch(match))}
       </svg>
 
@@ -580,4 +743,4 @@ const DarkChallongeBracket: React.FC<DarkChallongeBracketProps> = ({
   );
 };
 
-export default DarkChallongeBracket; 
+export default DarkChallongeBracket;

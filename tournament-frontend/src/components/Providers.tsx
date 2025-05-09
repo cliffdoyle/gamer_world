@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -9,6 +10,8 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   const [mounted, setMounted] = useState(false);
+  // Get Google Client ID from environment variable
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
   useEffect(() => {
     setMounted(true);
@@ -19,8 +22,10 @@ export function Providers({ children }: ProvidersProps) {
   }
 
   return (
-    <AuthProvider>
-      {children}
-    </AuthProvider>
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <AuthProvider>
+        {children}
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
 } 

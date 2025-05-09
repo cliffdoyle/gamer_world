@@ -1,7 +1,7 @@
 import React from 'react';
 // import SingleEliminationBracket from './SingleEliminationBracket'; // Not needed if ChallongeLikeBracket handles SE
 // import DoubleEliminationBracket from './DoubleEliminationBracket'; // Old name
-import ChallongeLikeBracket from './ChallongeLikeBracket'; // Use the new/refactored component
+import DarkChallongeBracket from './DarkChallongeBracket';
 import RoundRobinTable from './RoundRobinTable';
 import { Tournament, Match, Participant } from '@/types/tournament';
 
@@ -25,7 +25,7 @@ const BracketRenderer: React.FC<BracketRendererProps> = ({
   // Use the new Challonge-like visualization for elimination formats
   if (tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') {
     return (
-      <ChallongeLikeBracket
+      <DarkChallongeBracket
         tournament={tournament}
         matches={matches}
         participants={participants}

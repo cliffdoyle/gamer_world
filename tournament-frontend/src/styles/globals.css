@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Add the existing content and then our bracket styles */
 
 /* General bracket styling */
