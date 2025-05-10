@@ -6,7 +6,6 @@ import Head from 'next/head';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 
 interface FormData {
-  username: string;
   email: string;
   password: string;
   confirmPassword: string;
@@ -14,7 +13,7 @@ interface FormData {
 
 const SignupPage = () => {
   const [isClient, setIsClient] = useState(false);
-  const { googleSignIn } = useAuth();
+  const { googleSignIn} = useAuth();
   const [formData, setFormData] = useState<FormData>({
     username: '',
     email: '',
@@ -24,7 +23,6 @@ const SignupPage = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  // Use router directly
   const router = useRouter();
   
   useEffect(() => {
@@ -42,8 +40,8 @@ const SignupPage = () => {
     setError('');
     setIsLoading(true);
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+    if (!formData.email) {
+      setError('Email is required');
       setIsLoading(false);
       return;
     }
@@ -64,372 +62,164 @@ const SignupPage = () => {
       if (credentialResponse.credential) {
         await googleSignIn(credentialResponse.credential);
         router.push('/dashboard');
+      } else {
+        setError('Google sign-in failed: No token received.');
       }
     } catch (err: any) {
-      // Display the more user-friendly error message from our improved error handling
-      setError((err && err.message) || 'Google sign-in failed. Please try email registration or try again later.');
-      
-      // Log the detailed error for debugging purposes
+      setError((err && err.message) || 'Google sign-in failed. Please try again later.');
       console.error('Google auth error:', err);
     }
   };
 
+  // const handleGithubSignIn = async () => {
+  //   try {
+  //     // You'll need to implement this in your AuthContext
+  //     await githubSignIn();
+  //     router.push('/dashboard');
+  //   } catch (err: any) {
+  //     setError((err && err.message) || 'GitHub sign-in failed. Please try again later.');
+  //     console.error('GitHub auth error:', err);
+  //   }
+  // };
+
   if (!isClient) {
-    return null; // Don't render anything on server
+    return null;
   }
 
   return (
-    <div>
+    <>
       <Head>
-        <title>Sign Up - Gamer World</title>
-        <style>{`
-          @media (min-width: 768px) {
-            .panels-container {
-              flex-direction: row !important;
-            }
-            .left-panel {
-              width: 50% !important;
-              height: 100vh !important;
-            }
-            .right-panel {
-              width: 50% !important;
-              height: 100vh !important;
-            }
-          }
-          .input-field:focus {
-            border-color: #50f0b4 !important;
-            box-shadow: 0 0 0 1px #50f0b4 !important;
-          }
-          .home-link:hover {
-            color: #ffffff !important;
-          }
-          .signup-button:hover {
-            background-color: #3ad8a3 !important;
-            box-shadow: 0 0 10px rgba(80, 240, 180, 0.5) !important;
-          }
-          .login-link:hover {
-            color: #3ad8a3 !important;
-          }
-        `}</style>
+        <title>Sign up</title>
       </Head>
-      
-      {/* Main container with Neon-inspired design */}
-      <div style={{ 
-        minHeight: '100vh', 
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#000000'
-      }}>
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: '100vh',
-          width: '100%'
-        }}>
-          {/* Two panel layout */}
-          <div className="panels-container" style={{
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: '100vh',
-            width: '100%'
-          }}>
-            {/* Left panel - Dark with neon accents */}
-            <div className="left-panel" style={{ 
-              backgroundColor: '#121212', 
-              color: 'white',
-              padding: '40px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              width: '100%',
-              height: '40vh',
-              borderRight: '1px solid rgba(80, 240, 180, 0.3)'
-            }}>
-              <div style={{ textAlign: 'center', maxWidth: '400px' }}>
-                <h1 style={{ 
-                  fontSize: '2.5rem', 
-                  fontWeight: 'bold',
-                  marginBottom: '1rem',
-                  color: '#50f0b4', // Neon green color
-                  textShadow: '0 0 8px rgba(80, 240, 180, 0.8)'
-                }}>
-                  Gamer World
-                </h1>
-                <p style={{ 
-                  fontSize: '1.1rem',
-                  opacity: 0.9,
-                  marginBottom: '2rem'
-                }}>
-                  For serious FIFA/FC players
-                </p>
-                <h2 style={{ 
-                  fontSize: '1.8rem',
-                  fontWeight: 'bold',
-                  marginBottom: '1rem',
-                }}>
-                  Create your account
-                </h2>
-                <p style={{ opacity: 0.8 }}>
-                  Join the community of competitive FIFA/FC players. Track your progress, find tournaments, and connect with other gamers.
-                </p>
-              </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#18181c] via-[#23232b] to-[#101014] text-gray-100 font-sans p-4">
+        <div className="w-full max-w-md bg-white/5 backdrop-blur-lg border border-white/10 shadow-2xl rounded-2xl p-10 flex flex-col items-center transition-all duration-300">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-lg">Create your <span className="text-[#50f0b4]">Gamer World</span> account</h1>
+            <p className="text-gray-400 mt-2 text-base font-medium">Join the ultimate gaming community.</p>
+          </div>
+          <h2 className="text-2xl font-semibold text-white text-center mb-6">
+            Sign up
+          </h2>
+          
+          {error && (
+            <div className="bg-red-700/30 border border-red-500 text-red-300 px-4 py-3 rounded mb-6 text-sm" role="alert">
+              {error}
             </div>
+          )}
 
-            {/* Right panel - Signup form with dark theme */}
-            <div className="right-panel" style={{ 
-              backgroundColor: '#1a1a1a',
-              color: 'white',
-              padding: '40px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              width: '100%',
-              minHeight: '60vh'
-            }}>
-              <div style={{ width: '100%', maxWidth: '400px' }}>
-                <Link href="/" className="home-link" style={{ 
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  color: '#aaaaaa',
-                  marginBottom: '2rem',
-                  textDecoration: 'none'
-                }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  <span>Home</span>
-                </Link>
+          <div className="mb-6">
+            <label htmlFor="username" className="text-gray-300 text-sm">
+              Username
+            </label>
+            <input
+              type="text"
+              name="username"
+              id="username"
+              value={formData.username}
+              onChange={handleInputChange}
+              required
+              className="mt-1 w-full px-4 py-3 bg-[#2D2D2D] border border-[#3D3D3D] rounded text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+              placeholder="Choose a username"
+            />
+          </div>
 
-                <h2 style={{ 
-                  fontSize: '1.8rem', 
-                  fontWeight: 'bold',
-                  marginBottom: '0.5rem',
-                  color: '#ffffff'
-                }}>
-                  Sign up
-                </h2>
-                <p style={{ 
-                  color: '#aaaaaa',
-                  marginBottom: '2rem'
-                }}>
-                  Connect to Gamer World with:
-                </p>
+          <div className="mb-6">
+            <label htmlFor="email" className="text-gray-300 text-sm">
+              Email
+            </label>
+            <input
+              type="email"
+              name="email"
+              id="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              required
+              className="mt-1 w-full px-4 py-3 bg-[#2D2D2D] border border-[#3D3D3D] rounded text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+              placeholder="you@example.com"
+            />
+          </div>
 
-                {error && (
-                  <div style={{ 
-                    backgroundColor: 'rgba(127, 29, 29, 0.3)',
-                    border: '1px solid #991b1b',
-                    color: '#f87171',
-                    padding: '1rem',
-                    borderRadius: '0.375rem',
-                    marginBottom: '1rem'
-                  }}>
-                    {error}
-                  </div>
-                )}
+          <div className="mb-6">
+            <label htmlFor="password" className="text-gray-300 text-sm">
+              Password
+            </label>
+            <input
+              type="password"
+              name="password"
+              id="password"
+              value={formData.password}
+              onChange={handleInputChange}
+              required
+              className="mt-1 w-full px-4 py-3 bg-[#2D2D2D] border border-[#3D3D3D] rounded text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+              placeholder="Choose a password"
+            />
+          </div>
 
-                {/* Google Login */}
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <GoogleLogin
-                    onSuccess={handleGoogleLogin}
-                    onError={() => setError('Google login failed')}
-                    useOneTap
-                    theme="filled_black"
-                    shape="rectangular"
-                    text="signup_with"
-                    logo_alignment="center"
-                    width="100%"
-                  />
-                </div>
+          <div className="mb-6">
+            <label htmlFor="confirmPassword" className="text-gray-300 text-sm">
+              Confirm Password
+            </label>
+            <input
+              type="password"
+              name="confirmPassword"
+              id="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleInputChange}
+              required
+              className="mt-1 w-full px-4 py-3 bg-[#2D2D2D] border border-[#3D3D3D] rounded text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+              placeholder="Confirm your password"
+            />
+          </div>
 
-                {/* Divider */}
-                <div style={{ 
-                  display: 'flex',
-                  alignItems: 'center',
-                  margin: '1.5rem 0'
-                }}>
-                  <div style={{ 
-                    flexGrow: 1,
-                    height: '1px',
-                    backgroundColor: '#333333'
-                  }}></div>
-                  <div style={{ 
-                    margin: '0 0.75rem',
-                    color: '#888888',
-                    fontSize: '0.75rem',
-                    fontWeight: '500',
-                    textTransform: 'uppercase'
-                  }}>
-                    OR SIGN UP WITH EMAIL
-                  </div>
-                  <div style={{ 
-                    flexGrow: 1,
-                    height: '1px',
-                    backgroundColor: '#333333'
-                  }}></div>
-                </div>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isLoading || !formData.username || !formData.email || !formData.password}
+            className="w-full bg-white hover:bg-gray-100 text-black font-medium py-3 px-4 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed mb-6"
+          >
+            {isLoading ? 'Creating account...' : 'Continue'}
+          </button>
 
-                {/* Signup Form */}
-                <form onSubmit={handleSubmit}>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label htmlFor="username" style={{ 
-                      display: 'block',
-                      color: '#bbbbbb',
-                      marginBottom: '0.5rem',
-                      fontSize: '0.875rem'
-                    }}>
-                      Username
-                    </label>
-                    <input
-                      id="username"
-                      name="username"
-                      type="text"
-                      required
-                      value={formData.username}
-                      onChange={handleInputChange}
-                      className="input-field"
-                      style={{ 
-                        width: '100%',
-                        padding: '0.75rem 1rem',
-                        backgroundColor: '#2a2a2a',
-                        color: 'white',
-                        border: '1px solid #444444',
-                        borderRadius: '0.375rem',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
+          <div className="flex items-center my-6">
+            <hr className="flex-grow border-[#3D3D3D]" />
+            <span className="mx-4 text-gray-500 text-sm">OR</span>
+            <hr className="flex-grow border-[#3D3D3D]" />
+          </div>
 
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label htmlFor="email" style={{ 
-                      display: 'block',
-                      color: '#bbbbbb',
-                      marginBottom: '0.5rem',
-                      fontSize: '0.875rem'
-                    }}>
-                      Email
-                    </label>
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      className="input-field"
-                      style={{ 
-                        width: '100%',
-                        padding: '0.75rem 1rem',
-                        backgroundColor: '#2a2a2a',
-                        color: 'white',
-                        border: '1px solid #444444',
-                        borderRadius: '0.375rem',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
+          <div className="mb-4 w-full flex items-center justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleLogin}
+              onError={() => setError('Google login failed')}
+              width="100%"
+              theme="filled_black"
+              shape="rectangular"
+            />
+          </div>
 
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label htmlFor="password" style={{ 
-                      display: 'block',
-                      color: '#bbbbbb',
-                      marginBottom: '0.5rem',
-                      fontSize: '0.875rem'
-                    }}>
-                      Password
-                    </label>
-                    <input
-                      id="password"
-                      name="password"
-                      type="password"
-                      required
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      className="input-field"
-                      style={{ 
-                        width: '100%',
-                        padding: '0.75rem 1rem',
-                        backgroundColor: '#2a2a2a',
-                        color: 'white',
-                        border: '1px solid #444444',
-                        borderRadius: '0.375rem',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
+          {/* <button
+            onClick={handleGithubSignIn}
+            className="w-full flex items-center justify-center gap-2 bg-[#2D2D2D] hover:bg-[#353535] text-white font-medium py-3 px-4 rounded border border-[#3D3D3D] transition-colors duration-200 mb-6"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z" />
+            </svg>
+            Continue with GitHub
+          </button> */}
 
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <label htmlFor="confirmPassword" style={{ 
-                      display: 'block',
-                      color: '#bbbbbb',
-                      marginBottom: '0.5rem',
-                      fontSize: '0.875rem'
-                    }}>
-                      Confirm Password
-                    </label>
-                    <input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      required
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      className="input-field"
-                      style={{ 
-                        width: '100%',
-                        padding: '0.75rem 1rem',
-                        backgroundColor: '#2a2a2a',
-                        color: 'white',
-                        border: '1px solid #444444',
-                        borderRadius: '0.375rem',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="signup-button"
-                    style={{ 
-                      width: '100%',
-                      backgroundColor: '#50f0b4',
-                      color: '#121212',
-                      fontWeight: '600',
-                      padding: '0.75rem 1rem',
-                      borderRadius: '0.375rem',
-                      cursor: 'pointer',
-                      border: 'none',
-                      transition: 'background-color 0.2s, box-shadow 0.2s'
-                    }}
-                  >
-                    {isLoading ? 'Creating Account...' : 'Sign Up'}
-                  </button>
-
-                  <p style={{ 
-                    marginTop: '1.5rem',
-                    textAlign: 'center',
-                    color: '#aaaaaa'
-                  }}>
-                    Already have an account?{' '}
-                    <Link href="/login" className="login-link" style={{ 
-                      color: '#50f0b4',
-                      fontWeight: '500',
-                      textDecoration: 'none'
-                    }}>
-                      Log in
-                    </Link>
-                  </p>
-                </form>
-              </div>
-            </div>
+          <div className="text-center text-sm text-gray-400">
+            Already have an account?{' '}
+            <Link href="/login" className="text-blue-500 hover:text-blue-400 font-medium">
+              Sign in
+            </Link>
+          </div>
+          
+          <div className="mt-8 text-center text-xs text-gray-500">
+            Terms of Service and Privacy Policy
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
-export default SignupPage; 
+export default SignupPage;

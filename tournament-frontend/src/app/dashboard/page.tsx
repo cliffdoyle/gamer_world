@@ -77,8 +77,9 @@ export default function Dashboard() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg flex items-center gap-4 hover:shadow-indigo-500/30 transition-shadow duration-300">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+            {/* Stat Card 1: Win Rate */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
               <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center text-green-400 flex-shrink-0">
                 <FaTrophy size={28} />
               </div>
@@ -87,7 +88,8 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold text-white">{user.stats.winRate}</p>
               </div>
             </div>
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg flex items-center gap-4 hover:shadow-indigo-500/30 transition-shadow duration-300">
+            {/* Stat Card 2: Total Games */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
               <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400 flex-shrink-0">
                 <FaGamepad size={28} />
               </div>
@@ -96,7 +98,8 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold text-white">{user.stats.totalGames}</p>
               </div>
             </div>
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg flex items-center gap-4 hover:shadow-indigo-500/30 transition-shadow duration-300">
+            {/* Stat Card 3: Tournaments */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
               <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400 flex-shrink-0">
                 <FaTrophy size={28} />
               </div>
@@ -105,7 +108,8 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold text-white">{user.stats.tournaments}</p>
               </div>
             </div>
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg flex items-center gap-4 hover:shadow-indigo-500/30 transition-shadow duration-300">
+            {/* Stat Card 4: Current Rank */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
               <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 flex-shrink-0">
                 <FaMedal size={28} />
               </div>
@@ -175,14 +179,14 @@ export default function Dashboard() {
           </div>
 
           {/* Action Buttons */}
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-indigo-700/50 transition-all duration-300 transform hover:scale-105">
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-5">
+            <button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg shadow-indigo-600/30 hover:shadow-indigo-500/40 transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75">
               Join Tournament
             </button>
-            <button className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-gray-600/50 transition-all duration-300 transform hover:scale-105">
+            <button className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
               Create Tournament
             </button>
-            <button className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-gray-600/50 transition-all duration-300 transform hover:scale-105">
+            <button className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
               View Leaderboard
             </button>
           </div>
