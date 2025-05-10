@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { FaTrophy, FaGamepad, FaUsers, FaMedal } from 'react-icons/fa';
+import { FaTrophy, FaGamepad, FaUsers, FaMedal, FaChevronRight } from 'react-icons/fa'; // Added FaChevronRight
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+
+// Teal color hex for direct use if needed, e.g., in SVG props
+const TEAL_COLOR_HEX = "#2DD4BF"; // Tailwind's teal-400
 
 export default function Dashboard() {
   // Placeholder user data
@@ -11,7 +14,7 @@ export default function Dashboard() {
     username: "ProGamer123",
     rank: "Diamond Elite",
     level: 42,
-    avatar: "/avatar.png",
+    avatar: "/avatar.png", // Make sure this avatar exists in your public folder
     stats: {
       winRate: "68%",
       totalGames: 156,
@@ -22,176 +25,159 @@ export default function Dashboard() {
 
   // Placeholder activity data
   const activity = [
-    { type: 'Win', detail: 'Won match in Winter Cup', date: '2025-05-09' },
-    { type: 'Join', detail: 'Joined Spring Showdown', date: '2025-05-08' },
-    { type: 'Chat', detail: 'Chatted in Autumn Arena', date: '2025-04-30' }
+    { type: 'Win', detail: 'Won match in Winter Cup Finals', date: '2025-05-09' },
+    { type: 'Achievement', detail: 'Unlocked "Legendary" Badge', date: '2025-05-09' },
+    { type: 'Join', detail: 'Joined Spring Showdown Tournament', date: '2025-05-08' },
+    { type: 'Chat', detail: 'Posted in #general chat', date: '2025-04-30' }
   ];
 
   // Placeholder active tournaments
   const activeTournaments = [
     {
-      name: "Summer Championship",
-      prize: "$1,000",
-      participants: 64,
-      status: "Round of 16"
+      name: "Summer Championship Series",
+      prize: "$5,000",
+      participants: 128,
+      status: "Registrations Open"
     },
     {
-      name: "Weekly Blitz",
+      name: "Weekly Blitz Tournament",
       prize: "$250",
       participants: 32,
-      status: "Quarter Finals"
+      status: "Round 2 Ongoing"
+    },
+    {
+      name: "Nightly Skirmish",
+      prize: "Bragging Rights",
+      participants: 16,
+      status: "Finals Soon"
     }
   ];
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-900 text-gray-100 py-8 font-sans">
-        {/* Main Content */}
+      <div className="min-h-screen bg-black text-gray-100 py-8 font-sans">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Profile Section */}
-          <div className="mb-8 bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-700 flex flex-col md:flex-row items-center gap-6">
-            {/* Avatar Container */}
+          <div className="mb-10 bg-black border border-teal-500/30 rounded-xl p-6 shadow-lg shadow-teal-500/10 flex flex-col md:flex-row items-center gap-6">
             <div className="relative flex-shrink-0">
-              <div className="relative w-24 h-24 rounded-full border-4 border-indigo-500 shadow-lg shadow-indigo-500/50 overflow-hidden">
+              <div className="relative w-24 h-24 rounded-full border-4 border-teal-400 shadow-lg shadow-teal-400/40 overflow-hidden">
                 <Image
                   src={user.avatar}
-                  alt="Avatar"
+                  alt="User Avatar"
                   width={96}
                   height={96}
                   className="object-cover w-full h-full"
                   priority
                 />
               </div>
-              <div className="absolute -bottom-2 -right-2 bg-indigo-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+              <div className="absolute -bottom-2 -right-2 bg-teal-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-md">
                 LVL {user.level}
               </div>
             </div>
             
-            {/* User Info */}
             <div className="flex-1 text-center md:text-left">
-              <h1 className="text-3xl font-bold text-white mb-2">
-                Welcome back, <span className="text-indigo-400">{user.username}</span>
+              <h1 className="text-3xl font-bold text-white mb-1">
+                Welcome back, <span className="text-teal-400">{user.username}</span>!
               </h1>
-              <p className="text-gray-400 text-lg">Rank: <span className="text-indigo-400 font-semibold">{user.rank}</span></p>
+              <p className="text-gray-400 text-lg">Current Rank: <span className="text-teal-400 font-semibold">{user.rank}</span></p>
             </div>
           </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-            {/* Stat Card 1: Win Rate */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
-              <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center text-green-400 flex-shrink-0">
-                <FaTrophy size={28} />
+            {[
+              { icon: FaTrophy, label: "Win Rate", value: user.stats.winRate },
+              { icon: FaGamepad, label: "Total Games", value: user.stats.totalGames },
+              { icon: FaUsers, label: "Tournaments Played", value: user.stats.tournaments },
+              { icon: FaMedal, label: "Global Rank", value: `#${user.stats.currentRank}` },
+            ].map((stat, index) => (
+              <div key={index} className="bg-gray-950 rounded-xl p-5 border border-teal-500/20 shadow-md hover:border-teal-500/50 hover:shadow-teal-500/20 transition-all duration-300 transform hover:-translate-y-1 flex items-center gap-4">
+                <div className="w-12 h-12 bg-teal-500/10 rounded-lg flex items-center justify-center text-teal-400 flex-shrink-0">
+                  <stat.icon size={26} />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-400">{stat.label}</p>
+                  <p className="text-2xl font-bold text-white">{stat.value}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-400">Win Rate</p>
-                <p className="text-2xl font-bold text-white">{user.stats.winRate}</p>
-              </div>
-            </div>
-            {/* Stat Card 2: Total Games */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400 flex-shrink-0">
-                <FaGamepad size={28} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-400">Total Games</p>
-                <p className="text-2xl font-bold text-white">{user.stats.totalGames}</p>
-              </div>
-            </div>
-            {/* Stat Card 3: Tournaments */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
-              <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400 flex-shrink-0">
-                <FaTrophy size={28} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-400">Tournaments</p>
-                <p className="text-2xl font-bold text-white">{user.stats.tournaments}</p>
-              </div>
-            </div>
-            {/* Stat Card 4: Current Rank */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/50 shadow-lg flex items-center gap-4 hover:border-indigo-500/50 hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
-              <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 flex-shrink-0">
-                <FaMedal size={28} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-400">Current Rank</p>
-                <p className="text-2xl font-bold text-white">#{user.stats.currentRank}</p>
-              </div>
-            </div>
+            ))}
           </div>
 
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Active Tournaments - Spans 2 columns on lg screens */}
-            <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 border border-gray-700 shadow-xl">
+            {/* Active Tournaments */}
+            <div className="lg:col-span-2 bg-black border border-teal-500/30 rounded-xl p-6 shadow-lg shadow-teal-500/10">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  <FaTrophy color="#818cf8" size={24} />
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <FaTrophy className="text-teal-400" size={24} />
                   Active Tournaments
                 </h2>
-                <button className="text-sm text-indigo-400 hover:text-indigo-300 font-semibold transition-colors">
-                  View All
+                <button className="text-sm text-teal-400 hover:text-teal-300 font-semibold transition-colors flex items-center gap-1">
+                  View All <FaChevronRight size={12} />
                 </button>
               </div>
               <div className="space-y-4">
                 {activeTournaments.map((tournament, index) => (
-                  <div key={index} className="bg-gray-700/50 rounded-xl p-4 hover:bg-gray-700/80 transition-colors cursor-pointer">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-white">{tournament.name}</h3>
-                      <span className="text-green-400 font-bold">{tournament.prize}</span>
+                  <div key={index} className="bg-gray-950 rounded-lg p-4 border border-gray-800 hover:border-teal-500/40 transition-colors group cursor-pointer">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="font-semibold text-white group-hover:text-teal-400 transition-colors">{tournament.name}</h3>
+                      <span className="text-sm font-bold text-teal-400">{tournament.prize}</span>
                     </div>
-                    <div className="flex justify-between text-sm text-gray-400">
+                    <div className="flex justify-between text-xs text-gray-400">
                       <span>{tournament.participants} Participants</span>
-                      <span>{tournament.status}</span>
+                      <span className={`font-medium ${tournament.status.includes("Open") || tournament.status.includes("Ongoing") ? 'text-green-400' : 'text-yellow-400'}`}>{tournament.status}</span>
                     </div>
                   </div>
                 ))}
+                {activeTournaments.length === 0 && <p className="text-gray-500 text-center py-4">No active tournaments right now. Check back soon!</p>}
               </div>
             </div>
 
-            {/* Activity Feed - Spans 1 column on lg screens */}
-            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700 shadow-xl">
+            {/* Activity Feed */}
+            <div className="bg-black border border-teal-500/30 rounded-xl p-6 shadow-lg shadow-teal-500/10">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  <FaUsers color="#818cf8" size={24} />
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <FaUsers className="text-teal-400" size={24} />
                   Recent Activity
                 </h2>
-                <button className="text-sm text-indigo-400 hover:text-indigo-300 font-semibold transition-colors">
-                  View All
+                <button className="text-sm text-teal-400 hover:text-teal-300 font-semibold transition-colors flex items-center gap-1">
+                  View All <FaChevronRight size={12} />
                 </button>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {activity.map((item, index) => (
-                  <div key={index} className="flex items-center gap-4 bg-gray-700/50 rounded-xl p-4">
-                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                  <div key={index} className="flex items-start gap-3 bg-gray-950 p-3 rounded-lg border border-gray-800">
+                    <div className={`mt-1 w-3 h-3 rounded-full flex-shrink-0 ${
                       item.type === 'Win' ? 'bg-green-400' :
-                      item.type === 'Join' ? 'bg-indigo-400' :
+                      item.type === 'Join' ? 'bg-teal-400' :
+                      item.type === 'Achievement' ? 'bg-yellow-400' :
                       'bg-gray-500'
                     }`} />
                     <div className="flex-1">
-                      <p className="text-white text-sm">{item.detail}</p>
-                      <p className="text-xs text-gray-400">{item.date}</p>
+                      <p className="text-white text-sm font-medium">{item.detail}</p>
+                      <p className="text-xs text-gray-500">{item.date}</p>
                     </div>
                   </div>
                 ))}
+                 {activity.length === 0 && <p className="text-gray-500 text-center py-4">No recent activity.</p>}
               </div>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-5">
-            <button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg shadow-indigo-600/30 hover:shadow-indigo-500/40 transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75">
-              Join Tournament
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button className="w-full sm:w-auto bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg shadow-teal-500/30 hover:shadow-teal-600/40 transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-opacity-75">
+              Find a Tournament
             </button>
-            <button className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
-              Create Tournament
+            <button className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
+              Create New Tournament
             </button>
-            <button className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
-              View Leaderboard
+            <button className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
+              View Leaderboards
             </button>
           </div>
         </div>
       </div>
     </ProtectedRoute>
   );
-} 
+}
