@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { FaTrophy, FaGamepad, FaUsers, FaMedal, FaChevronRight } from 'react-icons/fa'; // Added FaChevronRight
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
@@ -9,6 +10,8 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 const TEAL_COLOR_HEX = "#2DD4BF"; // Tailwind's teal-400
 
 export default function Dashboard() {
+  const router = useRouter();
+  
   // Placeholder user data
   const user = {
     username: "ProGamer123",
@@ -27,14 +30,14 @@ export default function Dashboard() {
   const activity = [
     { type: 'Win', detail: 'Won match in Winter Cup Finals', date: '2025-05-09' },
     { type: 'Achievement', detail: 'Unlocked "Legendary" Badge', date: '2025-05-09' },
-    { type: 'Join', detail: 'Joined Spring Showdown Tournament', date: '2025-05-08' },
+    { type: 'Join', detail: 'Joined Vasha Showdown Tournament', date: '2025-05-08' },
     { type: 'Chat', detail: 'Posted in #general chat', date: '2025-04-30' }
   ];
 
   // Placeholder active tournaments
   const activeTournaments = [
     {
-      name: "Summer Championship Series",
+      name: "Kisumu Championship Series",
       prize: "$5,000",
       participants: 128,
       status: "Registrations Open"
@@ -46,7 +49,7 @@ export default function Dashboard() {
       status: "Round 2 Ongoing"
     },
     {
-      name: "Nightly Skirmish",
+      name: "Kanairo nightly Skirmish",
       prize: "Bragging Rights",
       participants: 16,
       status: "Finals Soon"
@@ -169,9 +172,12 @@ export default function Dashboard() {
             <button className="w-full sm:w-auto bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg shadow-teal-500/30 hover:shadow-teal-600/40 transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-opacity-75">
               Find a Tournament
             </button>
-            <button className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
+            <a 
+              href="/tournaments/create"
+              className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75 text-center inline-block"
+            >
               Create New Tournament
-            </button>
+            </a>
             <button className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
               View Leaderboards
             </button>

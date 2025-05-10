@@ -174,7 +174,7 @@ func (r *matchRepository) GetByTournamentID(ctx context.Context, tournamentID uu
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
 			next_match_id, loser_next_match_id, created_at, updated_at,
-			match_notes, match_proofs
+			match_notes, match_proofs, bracket_type
 		FROM matches
 		WHERE tournament_id = $1
 		ORDER BY round, match_number
@@ -211,6 +211,7 @@ func (r *matchRepository) GetByTournamentID(ctx context.Context, tournamentID uu
 			&match.UpdatedAt,
 			&match.MatchNotes,
 			&proofsJSON,
+			&match.BracketType,
 		)
 		if err != nil {
 			return nil, err
@@ -239,7 +240,7 @@ func (r *matchRepository) GetByRound(ctx context.Context, tournamentID uuid.UUID
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
 			next_match_id, loser_next_match_id, created_at, updated_at,
-			match_notes, match_proofs
+			match_notes, match_proofs, bracket_type
 		FROM matches
 		WHERE tournament_id = $1 AND round = $2
 		ORDER BY match_number
@@ -276,6 +277,7 @@ func (r *matchRepository) GetByRound(ctx context.Context, tournamentID uuid.UUID
 			&match.UpdatedAt,
 			&match.MatchNotes,
 			&proofsJSON,
+			&match.BracketType,
 		)
 		if err != nil {
 			return nil, err
@@ -304,7 +306,7 @@ func (r *matchRepository) GetByParticipant(ctx context.Context, tournamentID, pa
 			score_participant1, score_participant2,
 			status, scheduled_time, completed_time,
 			next_match_id, loser_next_match_id, created_at, updated_at,
-			match_notes, match_proofs
+			match_notes, match_proofs, bracket_type
 		FROM matches
 		WHERE tournament_id = $1 
 		AND (participant1_id = $2 OR participant2_id = $2)
@@ -342,6 +344,7 @@ func (r *matchRepository) GetByParticipant(ctx context.Context, tournamentID, pa
 			&match.UpdatedAt,
 			&match.MatchNotes,
 			&proofsJSON,
+			&match.BracketType,
 		)
 		if err != nil {
 			return nil, err

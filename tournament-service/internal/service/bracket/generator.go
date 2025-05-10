@@ -140,6 +140,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 			Round:        1,
 			MatchNumber:  matchCounter,
 			Status:       domain.MatchPending,
+			BracketType:  domain.WinnersBracket,
 			// Participants: match1Participants,
 		}
 
@@ -186,7 +187,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 			Round:        2,
 			MatchNumber:  matchCounter,
 			Status:       domain.MatchPending,
-			BracketType: domain.BracketType(domain.SingleElimination),
+			BracketType: domain.WinnersBracket,
 			// Participants: realparticipants,
 		}
 
@@ -229,7 +230,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 				Round:        round,
 				MatchNumber:  matchCounter,
 				Status:       domain.MatchPending,
-				BracketType: domain.BracketType(domain.SingleElimination),
+				BracketType: domain.WinnersBracket,
 				// Participants: newParticipants,
 			}
 
