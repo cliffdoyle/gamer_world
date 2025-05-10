@@ -13,10 +13,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning className={inter.className}>
+      <body suppressHydrationWarning className={`${inter.className} bg-gray-900`}>
         <Providers>
           <Header />
-          <main className="min-h-screen bg-gray-50 pt-4">
+          <main>
             {children}
           </main>
         </Providers>
