@@ -1,52 +1,36 @@
+// src/app/tournaments/[id]/page.tsx
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { tournamentApi } from '@/lib/api/tournament';
-import { Tournament, Participant, Match, TournamentFormat } from '@/types/tournament';
+import { Tournament, Participant, Match, TournamentFormat } from '@/types/tournament'; // Your existing types
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import BracketRenderer from '@/components/tournament/BracketRenderer';
-import MatchScoreEditor from '@/components/tournament/MatchScoreEditor';
+import MatchScoreEditor from '@/components/tournament/MatchScoreEditor'; // You'll need this for scoring
 
 interface AddParticipantFormData {
   name: string;
 }
 
-// Create typed bracket definition
-type BracketType = 'WINNERS' | 'LOSERS' | null;
-
-// Extended match type to handle grand finals
-interface ExtendedMatch extends Match {
-  isGrandFinal?: boolean;
-  bracket?: BracketType;
-}
-
 export default function TournamentDetailPage({ params }: { params: { id: string } }) {
-  // Get the tournament ID from the params
   const { id: tournamentId } = params;
-  
   const router = useRouter();
   const { token } = useAuth();
+
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // UI State
   const [isAddingParticipant, setIsAddingParticipant] = useState(false);
   const [participantForm, setParticipantForm] = useState<AddParticipantFormData>({ name: '' });
   const [isGenerating, setIsGenerating] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'bracket'>('list');
-  const bracketRef = useRef<HTMLDivElement>(null);
-  const [isEditingMatch, setIsEditingMatch] = useState<string | null>(null);
-  const [scoreForm, setScoreForm] = useState<{ score1: string; score2: string }>({ score1: '', score2: '' });
-  const [isSubmittingScore, setIsSubmittingScore] = useState(false);
-  // State for bracket visualization data
-  const [processedMatches, setProcessedMatches] = useState<ExtendedMatch[]>([]);
-  const [regularWinnersMatches, setRegularWinnersMatches] = useState<ExtendedMatch[]>([]);
-  const [losersMatches, setLosersMatches] = useState<ExtendedMatch[]>([]);
-  const [grandFinalMatches, setGrandFinalMatches] = useState<ExtendedMatch[]>([]);
-  const [maxRound, setMaxRound] = useState(0);
+  const [viewMode, setViewMode] = useState<'bracket' | 'list'>('bracket'); // Default to bracket/table view
+  const [isEditingMatch, setIsEditingMatch] = useState<Match | null>(null); // Store the whole match object
 
   useEffect(() => {
     if (token && tournamentId) {
@@ -55,42 +39,26 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
   }, [token, tournamentId]);
 
   const fetchTournamentData = async () => {
+    setIsLoading(true);
     try {
-      const [tournamentData, participantsData] = await Promise.all([
+      const [tournamentData, participantsData, matchesData] = await Promise.all([
         tournamentApi.getTournament(token!, tournamentId),
-        tournamentApi.getParticipants(token!, tournamentId)
+        tournamentApi.getParticipants(token!, tournamentId),
+        tournamentApi.getMatches(token!, tournamentId)
       ]);
-      
       setTournament(tournamentData);
-      setParticipants(participantsData);
-      
-      // Always fetch matches
-      const matchesData = await tournamentApi.getMatches(token!, tournamentId);
-      console.log('Fetched matches:', matchesData);
+      setParticipants(participantsData || []);
+      setMatches(matchesData || []);
+      setError('');
+       // Default view mode based on format if matches are present
       if (matchesData && matchesData.length > 0) {
-        setMatches(matchesData);
-        
-        // Process bracket data when matches are updated
-        const processed = prepareBracketData(matchesData, tournamentData.format);
-        setProcessedMatches(processed);
-        
-        // Separate matches by bracket type
-        const winners = processed.filter(m => m.bracket === 'WINNERS' || !m.bracket);
-        const losers = processed.filter(m => m.bracket === 'LOSERS');
-        const finals = processed.filter(m => m.isGrandFinal === true);
-        const regularWinners = winners.filter(m => m.isGrandFinal !== true);
-        
-        setRegularWinnersMatches(regularWinners);
-        setLosersMatches(losers);
-        setGrandFinalMatches(finals);
-        
-        // Calculate max round for spacing
-        const winnersMaxRound = Math.max(...regularWinners.map(m => m.round), 0);
-        const losersMaxRound = Math.max(...losers.map(m => m.round), 0);
-        setMaxRound(Math.max(winnersMaxRound, losersMaxRound) + (finals.length > 0 ? 1 : 0));
-        
-        setError(''); // Clear error when matches are loaded successfully
+          if (tournamentData.format === 'ROUND_ROBIN') {
+            setViewMode('bracket'); // 'bracket' view for RoundRobinTable will show standings and matches
+          } else {
+            setViewMode('bracket'); // Default to actual bracket for elimination
+          }
       }
+
     } catch (err) {
       console.error('Error fetching tournament data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch tournament data');
@@ -101,892 +69,245 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
 
   const handleAddParticipant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) {
-      setError('You must be logged in to add participants');
+    if (!token || !tournament || !participantForm.name.trim()) return;
+    if (!isRegistrationOpen(tournament)) {
+      setError("Registration deadline has passed or tournament has started.");
       return;
     }
-    if (!tournament) return;
-
-    // Check registration deadline
-    if (tournament.registrationDeadline && new Date(tournament.registrationDeadline) < new Date()) {
-      setError('Registration deadline has passed');
-      return;
-    }
-
-    try {
-      if (!participantForm.name.trim()) {
-        setError('Participant name cannot be empty');
+    if (matches.length > 0) {
+        setError("Cannot add participants after the bracket has been generated.");
         return;
-      }
-      
-      console.log('Submitting participant with data:', {
-        participant_name: participantForm.name.trim()
-      });
-      
-      await tournamentApi.addParticipant(token, tournamentId, {
-        name: participantForm.name.trim()
-      });
-      
-      setIsAddingParticipant(false);
-      setParticipantForm({ name: '' });
-      setError(''); // Clear any previous errors
-      await fetchTournamentData(); // Refresh data
-    } catch (err) {
-      console.error('Error adding participant:', err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to add participant');
-      }
     }
-  };
 
-  const handleUpdateMatchScore = async (matchId: string, score1: string, score2: string) => {
-    if (!token || !tournament) return;
-    setIsSubmittingScore(true);
-    
     try {
-      const match = matches.find(m => m.id === matchId);
-      if (!match) {
-        throw new Error('Match not found');
-      }
-      
-      // Validate scores
-      const score1Num = parseInt(score1);
-      const score2Num = parseInt(score2);
-      
-      if (isNaN(score1Num) || isNaN(score2Num) || score1Num < 0 || score2Num < 0) {
-        throw new Error('Invalid scores. Please enter valid positive numbers.');
-      }
-      
-      // Tie check - cannot have ties in tournament matches
-      if (score1Num === score2Num) {
-        throw new Error('Match cannot end in a tie. Please provide a winner.');
-      }
-      
-      // Determine winner ID based on scores
-      const winnerId = score1Num > score2Num 
-        ? match.participant1_id 
-        : match.participant2_id;
-      
-      // Ensure winnerId is not null before passing it
-      const winnerIdParam = winnerId === null ? undefined : winnerId;
-      
-      console.log(`Updating match ${matchId} with scores: ${score1Num}-${score2Num}, winner: ${winnerId}`);
-      
-      // Call API to update match with separate scores
-      const updatedMatch = await tournamentApi.updateMatch(token, tournamentId, matchId, {
-        participant1Score: score1Num,
-        participant2Score: score2Num,
-        winnerId: winnerIdParam,
-        status: 'COMPLETED'
-      });
-      
-      console.log('Match updated successfully:', updatedMatch);
-      
-      // Show success message
-      setError(`Match score updated successfully! Winner will advance to the next round.`);
-      
-      // Fully refresh data to get the updated bracket
-      await fetchTournamentData();
-      
-      // Reset UI state
-      setIsEditingMatch(null);
-      setScoreForm({ score1: '', score2: '' });
-      
-      // Clear success message after delay
-      setTimeout(() => {
-        if (error && error.includes('updated successfully')) {
-          setError('');
-        }
-      }, 3000);
+      await tournamentApi.addParticipant(token, tournament.id, { name: participantForm.name.trim() });
+      setParticipantForm({ name: '' });
+      setIsAddingParticipant(false);
+      fetchTournamentData(); // Refresh
     } catch (err) {
-      console.error('Error updating match score:', err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('An error occurred while updating the match');
-      }
-    } finally {
-      setIsSubmittingScore(false);
+      setError(err instanceof Error ? err.message : 'Failed to add participant');
     }
   };
 
   const handleGenerateBracket = async () => {
-    if (!token) {
-      setError('You must be logged in to generate bracket');
-      return;
+    if (!token || !tournament || participants.length < 2) {
+        setError("At least 2 participants are needed to generate a bracket.");
+        return;
     }
-    if (!tournament) return;
-
     setIsGenerating(true);
-    setError(''); // Clear previous errors
     try {
-      await tournamentApi.generateBracket(token, tournamentId);
-      await fetchTournamentData(); // Refresh all data
+      await tournamentApi.generateBracket(token, tournament.id);
+      fetchTournamentData(); // Refresh to get new matches
     } catch (err) {
-      console.error('Error generating bracket:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate bracket');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const formatDateTime = (dateString: string | null) => {
-    if (!dateString) return 'Not set';
+  const handleUpdateMatchScore = async (matchId: string, p1ScoreStr: string, p2ScoreStr: string) => {
+    if (!token || !isEditingMatch || !tournament) return;
+
+    const score1 = parseInt(p1ScoreStr);
+    const score2 = parseInt(p2ScoreStr);
+
+    if (isNaN(score1) || isNaN(score2)) {
+        setError("Scores must be numbers.");
+        return;
+    }
+    if (tournament.format !== 'ROUND_ROBIN' && score1 === score2) {
+        setError("Ties are not allowed in this format.");
+        return;
+    }
+
+    const winnerId = score1 > score2 ? isEditingMatch.participant1_id
+                   : score2 > score1 ? isEditingMatch.participant2_id
+                   : null;
     try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'Not set';
-      return date.toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-        timeZoneName: 'short'
+      await tournamentApi.updateMatch(token, tournament.id, matchId, {
+        participant1Score: score1,
+        participant2Score: score2,
+        winnerId: winnerId,
+        status: 'COMPLETED'
       });
-    } catch (e) {
-      return 'Not set';
+      setIsEditingMatch(null);
+      fetchTournamentData(); // Refresh data
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update score');
     }
   };
 
-  // Function to get participant name by ID
-  const getParticipantNameById = (id: string | null) => {
-    if (!id) return 'TBD';
-    const participant = participants.find(p => p.id === id);
-    return participant ? (participant.participant_name || 'Unnamed') : 'TBD';
+
+  const formatDateTime = (dateString: string | null): string => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return 'Invalid Date';
+    }
   };
 
-  // Function to check if registration is still open
-  const isRegistrationOpen = () => {
-    if (!tournament || !tournament.registrationDeadline) return true;
-    return new Date(tournament.registrationDeadline) > new Date();
-  };
-  
-  // Function to format "time remaining" for registration
-  const getRegistrationTimeRemaining = () => {
-    if (!tournament || !tournament.registrationDeadline) return 'No deadline set';
-    
-    const deadline = new Date(tournament.registrationDeadline);
+  const isRegistrationOpen = (currentTournament: Tournament | null): boolean => {
+    if (!currentTournament) return false;
     const now = new Date();
+    const deadline = currentTournament.registrationDeadline ? new Date(currentTournament.registrationDeadline) : null;
+    const startTime = currentTournament.startTime ? new Date(currentTournament.startTime) : null;
     
-    if (deadline < now) return 'Registration closed';
-    
-    const diffMs = deadline.getTime() - now.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
-    if (diffDays > 0) {
-      return `${diffDays} days, ${diffHours} hours remaining`;
-    } else if (diffHours > 0) {
-      return `${diffHours} hours remaining`;
-    } else {
-      return 'Less than an hour remaining';
-    }
+    if (deadline && now > deadline) return false; // Past registration deadline
+    if (startTime && now > startTime && currentTournament.status !== 'REGISTRATION') return false; // Tournament started (and not in REG status anymore)
+    return true;
   };
 
-  // Get descriptive name for participants based on previous matches
-  const getParticipantDescription = (matchId: string | null, participantPosition: 1 | 2) => {
-    if (!matchId) return 'TBD';
-    
-    const match = matches.find(m => m.id === matchId);
-    if (!match) return 'TBD';
-    
-    // If the match has a participant, return their name
-    if (participantPosition === 1 && match.participant1_id) {
-      return getParticipantNameById(match.participant1_id);
-    } else if (participantPosition === 2 && match.participant2_id) {
-      return getParticipantNameById(match.participant2_id);
-    }
-    
-    // Otherwise return "Winner of Match X"
-    return `Winner of Match ${match.match_number}`;
+
+  const getParticipantNameById = (id: string | null): string => {
+    if (!id) return 'TBD';
+    const p = participants.find(p => p.id === id);
+    return p ? p.participant_name : 'Unknown';
   };
 
-  // Group matches by round for better display
-  const matchesByRound = matches.reduce((acc, match) => {
-    if (!acc[match.round]) {
-      acc[match.round] = [];
-    }
-    acc[match.round].push(match);
-    return acc;
-  }, {} as Record<number, typeof matches>);
 
-  // Prepare bracket data by ensuring proper bracket assignments
-  const prepareBracketData = (
-    matches: Match[], 
-    tournamentFormat: TournamentFormat | undefined
-  ): ExtendedMatch[] => {
-    if (!tournamentFormat) return matches as ExtendedMatch[];
-    
-    // Calculate maximum round
-    const maxRound = Math.max(...matches.map(m => m.round), 0);
+  if (isLoading) return <ProtectedRoute><div className="flex justify-center items-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-600"></div></div></ProtectedRoute>;
+  if (error && !tournament) return <ProtectedRoute><div className="p-4 text-center text-red-500">Error loading tournament: {error}</div></ProtectedRoute>;
+  if (!tournament) return <ProtectedRoute><div className="p-4 text-center">Tournament not found.</div></ProtectedRoute>;
 
-    // First pass - assign brackets based on tournament format
-    const withBrackets = matches.map(match => {
-      if (match.bracket) return match as ExtendedMatch;
 
-      // For single elimination, all matches are in winners bracket
-      if (tournamentFormat === 'SINGLE_ELIMINATION') {
-        return { ...match, bracket: 'WINNERS' as BracketType } as ExtendedMatch;
-      }
-
-      // For double elimination, determine bracket based on round and structure
-      if (tournamentFormat === 'DOUBLE_ELIMINATION') {
-        const winnersRounds = Math.ceil(Math.log2(participants.length || 2));
-        const isLosers = match.round > winnersRounds;
-        
-        return {
-          ...match,
-          bracket: isLosers ? 'LOSERS' : 'WINNERS' as BracketType
-        } as ExtendedMatch;
-      }
-
-      // Default
-      return { ...match, bracket: null } as ExtendedMatch;
-    });
-
-    // Second pass - identify grand finals for double elimination
-    return withBrackets.map(match => {
-      if (tournamentFormat !== 'DOUBLE_ELIMINATION') return match;
-      
-      // Grand finals is typically the last match in winners bracket with no next match
-      const isLastRound = match.round === maxRound;
-      const hasNoNextMatch = !matches.some(m => m.next_match_id === match.id);
-      
-      if (match.bracket === 'WINNERS' && isLastRound && hasNoNextMatch) {
-        return { ...match, isGrandFinal: true };
-      }
-      
-      return match;
-    });
-  };
-
-  // Function to draw the bracket visualization
-  const renderBracketView = () => {
-    if (!tournament) {
-      return (
-        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-4">
-          <p className="text-yellow-700 text-sm">Tournament data is not available.</p>
-        </div>
-      );
-    }
-
-    // Use the BracketRenderer component
-    return <BracketRenderer 
-      tournament={tournament} 
-      matches={matches} 
-      participants={participants} 
-      onMatchClick={(match) => {
-        setIsEditingMatch(match.id);
-        setScoreForm({
-          score1: match.score_participant1?.toString() || '',
-          score2: match.score_participant2?.toString() || ''
-        });
-      }}
-    />;
-  };
-
-  // Function for list view rendering of matches
-  const renderMatchList = (roundMatches: Match[]) => {
-    if (roundMatches.length === 0) {
-      return (
-        <div className="text-sm text-gray-500 py-2">No matches in this round</div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        {isEditingMatch && (
-          <MatchScoreEditor
-            match={matches.find(m => m.id === isEditingMatch)!}
-            participant1Name={getParticipantNameById(matches.find(m => m.id === isEditingMatch)?.participant1_id || null)}
-            participant2Name={getParticipantNameById(matches.find(m => m.id === isEditingMatch)?.participant2_id || null)}
-            onSubmit={(matchId, score1, score2) => handleUpdateMatchScore(matchId, score1, score2)}
-            onCancel={() => setIsEditingMatch(null)}
-            isSubmitting={isSubmittingScore}
-          />
-        )}
-
-        {roundMatches.map((match) => (
-          <div 
-            key={match.id} 
-            className={`border rounded-md shadow-sm p-4 bg-white ${
-              match.status === 'COMPLETED' ? 'border-green-200' : 'border-gray-200'
-            }`}
-          >
-            <div className="flex justify-between mb-2 items-center">
-              <span className="text-sm font-medium">Match {match.match_number}</span>
-              <span className={`text-xs px-2 py-1 rounded ${
-                match.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-blue-50 text-blue-600'
-              }`}>
-                {match.status || 'PENDING'}
-              </span>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <div className={`flex-1 ${match.winner_id === match.participant1_id ? 'font-bold text-green-700' : ''}`}>
-                  {getParticipantNameById(match.participant1_id)}
-                </div>
-                <div className="px-3 py-1 bg-gray-50 rounded font-medium">
-                  {match.score_participant1 !== null ? match.score_participant1 : '-'}
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <div className={`flex-1 ${match.winner_id === match.participant2_id ? 'font-bold text-green-700' : ''}`}>
-                  {getParticipantNameById(match.participant2_id)}
-                </div>
-                <div className="px-3 py-1 bg-gray-50 rounded font-medium">
-                  {match.score_participant2 !== null ? match.score_participant2 : '-'}
-                </div>
-              </div>
-            </div>
-            
-            {match.status !== 'COMPLETED' && match.participant1_id && match.participant2_id && (
-              <div className="mt-3 flex justify-end">
-                <button
-                  onClick={() => setIsEditingMatch(match.id)}
-                  disabled={isEditingMatch !== null}
-                  className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1 rounded border border-blue-200"
-                >
-                  Update Score
-                </button>
-              </div>
-            )}
-            
-            {match.status === 'COMPLETED' && (
-              <div className="mt-2 text-sm">
-                <span className="text-green-600 font-medium">
-                  Winner: {getParticipantNameById(match.winner_id)}
-                </span>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // Add the missing functions needed for bracket rendering
-  // Function to find the next match from match ID
-  const findNextMatch = (matchId: string | null): ExtendedMatch | undefined => {
-    if (!matchId) return undefined;
-    return processedMatches.find(m => m.id === matchId);
-  };
-
-  // Calculate positions for connection lines
-  const getConnectionPositions = (match: ExtendedMatch, round: number): { index: number; spacing: number } => {
-    const bracketMatches = match.bracket === 'LOSERS' ? losersMatches : regularWinnersMatches;
-    const matchesInRound = bracketMatches.filter(m => m.round === round).sort((a, b) => a.match_number - b.match_number);
-    const matchIndex = matchesInRound.findIndex(m => m.id === match.id);
-    const spacing = Math.pow(2, maxRound - round) * 20; // Reduced spacing
-    
-    return {
-      index: matchIndex,
-      spacing: spacing
-    };
-  };
-
-  // Restore the missing renderBracketSection function
-  const renderBracketSection = (bracketMatches: ExtendedMatch[], title: string, isLosers: boolean = false) => {
-    if (bracketMatches.length === 0) return null;
-    
-    const bracketMaxRound = Math.max(...bracketMatches.map(m => m.round));
-    
-    return (
-      <div className="mb-8">
-        <h3 className="text-lg font-medium mb-4 px-4 py-2 bg-gray-100 rounded-md shadow-sm">
-          {title}
-        </h3>
-        
-        <div className="overflow-auto">
-          <div className="flex" style={{ minWidth: `${bracketMaxRound * 220}px`, position: 'relative' }}>
-            {/* Draw connection lines between matches */}
-            <svg 
-              className="absolute top-0 left-0 w-full h-full" 
-              style={{ zIndex: 1, pointerEvents: 'none' }}
-            >
-              {bracketMatches.filter(match => match.next_match_id).map(match => {
-                const nextMatch = findNextMatch(match.next_match_id);
-                if (!nextMatch) return null;
-                
-                const sourceRound = match.round;
-                const targetRound = nextMatch.round;
-                
-                const sourcePosData = getConnectionPositions(match, sourceRound);
-                const targetPosData = getConnectionPositions(nextMatch, targetRound);
-                
-                // Calculate vertical positions
-                const sourceMatchHeight = 80; // Reduced height
-                
-                const sourceY = (sourcePosData.index * (sourceMatchHeight + sourcePosData.spacing)) + (sourceMatchHeight / 2) + 50;
-                const targetY = (targetPosData.index * (sourceMatchHeight + targetPosData.spacing)) + (sourceMatchHeight / 2) + 50;
-                
-                // Calculate horizontal positions
-                const columnWidth = 220;
-                const sourceX = sourceRound * columnWidth - 20;
-                const targetX = targetRound * columnWidth - columnWidth + 10;
-                
-                return (
-                  <path 
-                    key={`${match.id}-${nextMatch.id}`}
-                    d={`M ${sourceX} ${sourceY} H ${sourceX + 20} V ${targetY} H ${targetX}`}
-                    stroke="#94a3b8"
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                );
-              })}
-            </svg>
-            
-            {Array.from({ length: bracketMaxRound }, (_, i) => i + 1).map(round => (
-              <div key={round} className="w-52 px-2" style={{ minWidth: '200px' }}>
-                <h4 className="text-center font-medium mb-3 text-sm bg-gray-50 py-1 rounded">
-                  {isLosers ? `Losers Round ${round}` : `Round ${round}`}
-                </h4>
-                <div className="flex flex-col relative">
-                  {bracketMatches
-                    .filter(match => match.round === round)
-                    .sort((a, b) => a.match_number - b.match_number)
-                    .map((match, index) => {
-                      // Calculate spacing between matches based on the round
-                      const spacing = Math.pow(2, bracketMaxRound - round) * 20;
-                      
-                      // Find source matches - these are matches that feed into this one
-                      const sourceMatches = matches.filter(m => m.next_match_id === match.id);
-                      const participant1SourceMatch = sourceMatches.find(m => m.match_number % 2 !== 0);
-                      const participant2SourceMatch = sourceMatches.find(m => m.match_number % 2 === 0);
-                      
-                      // Get appropriate participant descriptions
-                      const participant1Name = match.participant1_id 
-                        ? getParticipantNameById(match.participant1_id)
-                        : participant1SourceMatch 
-                          ? (participant1SourceMatch.bracket === 'LOSERS' 
-                            ? `L: Match ${participant1SourceMatch.match_number}` 
-                            : `W: Match ${participant1SourceMatch.match_number}`)
-                          : 'TBD';
-                          
-                      const participant2Name = match.participant2_id 
-                        ? getParticipantNameById(match.participant2_id)
-                        : participant2SourceMatch 
-                          ? (participant2SourceMatch.bracket === 'LOSERS' 
-                            ? `L: Match ${participant2SourceMatch.match_number}` 
-                            : `W: Match ${participant2SourceMatch.match_number}`)
-                          : 'TBD';
-                      
-                      // Special highlight for matches that feed into grand finals
-                      const feedsIntoGrandFinal = grandFinalMatches.some(gf => 
-                        gf.participant1_id === match.winner_id || gf.participant2_id === match.winner_id
-                      );
-                      
-                      return (
-                        <div 
-                          key={match.id} 
-                          className="mb-3 relative" 
-                          style={{ 
-                            marginBottom: `${spacing}px`,
-                            zIndex: 10
-                          }}
-                        >
-                          <div className={`border rounded-lg bg-white p-2 shadow w-full 
-                            ${match.status === 'COMPLETED' ? 'border-green-200' : ''}
-                            ${feedsIntoGrandFinal ? 'border-yellow-300 border-2' : ''}
-                          `} style={{ height: '80px' }}>
-                            <div className="flex justify-between items-center border-b pb-1 mb-1">
-                              <span className="text-xs font-medium text-gray-600">
-                                Match {match.match_number}
-                              </span>
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                match.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-blue-50 text-blue-600'
-                              }`}>
-                                {match.status || 'PENDING'}
-                              </span>
-                            </div>
-                            
-                            <div className="flex flex-col justify-between h-[50px]">
-                              <div className={`flex justify-between items-center text-xs ${
-                                match.winner_id === match.participant1_id ? 'font-bold text-green-600' : ''
-                              }`}>
-                                <span className="truncate max-w-[120px]" title={participant1Name}>
-                                  {participant1Name}
-                                </span>
-                                <span className="bg-gray-50 px-1.5 rounded min-w-[24px] text-center">
-                                  {match.score_participant1 ?? '-'}
-                                </span>
-                              </div>
-                              
-                              <div className="border-t border-gray-100 my-1"></div>
-                              
-                              <div className={`flex justify-between items-center text-xs ${
-                                match.winner_id === match.participant2_id ? 'font-bold text-green-600' : ''
-                              }`}>
-                                <span className="truncate max-w-[120px]" title={participant2Name}>
-                                  {participant2Name}
-                                </span>
-                                <span className="bg-gray-50 px-1.5 rounded min-w-[24px] text-center">
-                                  {match.score_participant2 ?? '-'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  }
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  if (isLoading) {
-    return (
-      <ProtectedRoute>
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
-      </ProtectedRoute>
-    );
-  }
-
-  if (!tournament) {
-    return (
-      <ProtectedRoute>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <div className="bg-red-50 border-l-4 border-red-400 p-4">
-              <p className="text-red-700">Tournament not found</p>
-            </div>
-          </div>
-        </div>
-      </ProtectedRoute>
-    );
-  }
+  const canAddParticipants = isRegistrationOpen(tournament) && matches.length === 0;
+  const canGenerateBracket = participants.length >= 2 && matches.length === 0;
 
   return (
     <ProtectedRoute>
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          {/* Tournament Header */}
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">{tournament.name}</h1>
-              <p className="mt-2 text-gray-600">{tournament.description}</p>
-            </div>
-            <div className="flex space-x-4">
-              <button
-                onClick={() => router.push('/tournaments')}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-              >
-                Back to Tournaments
-              </button>
-              <button
-                onClick={handleGenerateBracket}
-                disabled={isGenerating}
-                className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
-                  isGenerating ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {isGenerating ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Generating...
-                  </>
-                ) : (
-                  'Generate Bracket'
-                )}
-              </button>
+      {isEditingMatch && (
+        <MatchScoreEditor
+          match={isEditingMatch}
+          participant1Name={getParticipantNameById(isEditingMatch.participant1_id)}
+          participant2Name={getParticipantNameById(isEditingMatch.participant2_id)}
+          onSubmit={handleUpdateMatchScore}
+          onCancel={() => setIsEditingMatch(null)}
+          isSubmitting={false} // You can add submitting state if needed
+        />
+      )}
+      <div className="container mx-auto p-4 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">{tournament.name}</h1>
+            <p className="text-sm text-gray-600">{tournament.description}</p>
+            <div className="mt-2 text-xs space-x-2">
+                <span className="badge badge-info badge-outline">{tournament.format.replace(/_/g, ' ')}</span>
+                <span className="badge badge-neutral badge-outline">{tournament.status}</span>
+                <span className="badge badge-ghost">Game: {tournament.game}</span>
             </div>
           </div>
-
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tournament Info - Simplified */}
-          <div className="bg-white shadow rounded-lg p-6 mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Tournament Details</h2>
-                <dl className="grid grid-cols-1 gap-4">
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Game</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{tournament.game}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Format</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{tournament.format}</dd>
-                  </div>
-                </dl>
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Schedule</h2>
-                
-                {tournament.registrationDeadline && (
-                  <div className={`mb-4 p-3 rounded-md ${isRegistrationOpen() ? 'bg-blue-50' : 'bg-red-50'}`}>
-                    <h3 className="text-sm font-semibold mb-1">Registration Deadline</h3>
-                    <p className="text-sm font-medium">
-                      {formatDateTime(tournament.registrationDeadline)}
-                    </p>
-                    <p className={`text-sm mt-1 ${isRegistrationOpen() ? 'text-blue-600' : 'text-red-600'} font-medium`}>
-                      {getRegistrationTimeRemaining()}
-                    </p>
-                  </div>
-                )}
-                
-                {tournament.startTime && (
-                  <div className="mb-4 p-3 rounded-md bg-green-50">
-                    <h3 className="text-sm font-semibold mb-1">Tournament Starts</h3>
-                    <p className="text-sm font-medium">
-                      {formatDateTime(tournament.startTime)}
-                    </p>
-                    <p className="text-sm mt-1 text-green-600 font-medium">
-                      {new Date(tournament.startTime) > new Date() 
-                        ? 'Coming soon' 
-                        : 'Tournament has started'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => router.push('/tournaments')} className="btn btn-sm btn-outline">
+              All Tournaments
+            </button>
+            <button
+              onClick={handleGenerateBracket}
+              className="btn btn-sm btn-primary"
+              disabled={!canGenerateBracket || isGenerating}
+            >
+              {isGenerating ? "Generating..." : (matches.length > 0 ? "Bracket Generated" : "Generate Bracket")}
+            </button>
           </div>
-
-          {/* Participants Section */}
-          <div className="bg-white shadow rounded-lg p-6 mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Participants</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
-                </p>
-              </div>
-              <button
-                onClick={() => setIsAddingParticipant(true)}
-                disabled={!isRegistrationOpen()}
-                className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md ${
-                  isRegistrationOpen() 
-                    ? 'text-white bg-blue-600 hover:bg-blue-700' 
-                    : 'text-gray-400 bg-gray-200 cursor-not-allowed'
-                }`}
-              >
-                Add Participant
-              </button>
-            </div>
-
-            {!isRegistrationOpen() && !isAddingParticipant && (
-              <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm text-red-700">Registration deadline has passed. No more participants can be added.</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {isAddingParticipant && (
-              <form onSubmit={handleAddParticipant} className="mb-4">
-                <div className="flex gap-4">
-                  <input
-                    type="text"
-                    value={participantForm.name}
-                    onChange={(e) => setParticipantForm({ name: e.target.value })}
-                    placeholder="Participant Name"
-                    className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-gray-900"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingParticipant(false);
-                      setError('');
-                    }}
-                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {participants.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">No participants yet</p>
-            ) : (
-              <ul className="divide-y divide-gray-200">
-                {participants.map((participant, index) => (
-                  <li key={participant.id} className="py-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {index + 1}. {participant.participant_name || participant.name || 'Unnamed Participant'}
-                        </p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Matches Section */}
-          {matches.length > 0 && (
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Tournament Bracket</h2>
-                
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={() => setViewMode('list')} 
-                    className={`px-4 py-2 text-sm rounded-md font-medium ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                  >
-                    List View
-                  </button>
-                  <button 
-                    onClick={() => setViewMode('bracket')} 
-                    className={`px-4 py-2 text-sm rounded-md font-medium ${viewMode === 'bracket' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                  >
-                    Bracket View
-                  </button>
-                </div>
-              </div>
-              
-              {viewMode === 'list' ? (
-                <div className="challonge-list-view">
-                  {(() => {
-                    const processedMatches = prepareBracketData(matches, tournament.format);
-                    
-                    // Group by round
-                    const roundMatchesMap = processedMatches.reduce((acc, match) => {
-                      const key = match.round.toString();
-                      if (!acc[key]) {
-                        acc[key] = [];
-                      }
-                      acc[key].push(match);
-                      return acc;
-                    }, {} as Record<string, ExtendedMatch[]>);
-                    
-                    // Sort rounds for display
-                    return Object.entries(roundMatchesMap)
-                      .sort(([roundA], [roundB]) => parseInt(roundA) - parseInt(roundB))
-                      .map(([round, roundMatches]) => {
-                        const hasLosersMatches = roundMatches.some(m => m.bracket === 'LOSERS');
-                        const hasGrandFinals = roundMatches.some(m => m.isGrandFinal === true);
-                        
-                        // Handle Grand Finals separately
-                        if (tournament.format === 'DOUBLE_ELIMINATION' && hasGrandFinals) {
-                          const grandFinalMatches = roundMatches.filter(m => m.isGrandFinal === true);
-                          const otherMatches = roundMatches.filter(m => !m.isGrandFinal);
-                          
-                          return (
-                            <React.Fragment key={round}>
-                              {otherMatches.length > 0 && (
-                                <div className="mb-8">
-                                  <h3 className="text-lg font-medium mb-4 px-4 py-2 bg-gray-100 rounded-md shadow-sm">
-                                    Round {round}
-                                  </h3>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {renderMatchList(otherMatches)}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              <div className="mb-8">
-                                <h3 className="text-lg font-medium mb-4 px-4 py-2 bg-yellow-100 rounded-md shadow-sm text-yellow-800">
-                                  Grand Finals
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                  {renderMatchList(grandFinalMatches)}
-                                </div>
-                              </div>
-                            </React.Fragment>
-                          );
-                        }
-                        
-                        // If the round has both winners and losers, separate them
-                        if (hasLosersMatches) {
-                          const winnersMatches = roundMatches.filter(m => m.bracket === 'WINNERS' || !m.bracket);
-                          const losersMatches = roundMatches.filter(m => m.bracket === 'LOSERS');
-                          
-                          return (
-                            <React.Fragment key={round}>
-                              {/* Winners bracket section */}
-                              {winnersMatches.length > 0 && (
-                                <div className="mb-8">
-                                  <h3 className="text-lg font-medium mb-4 px-4 py-2 bg-blue-50 rounded-md shadow-sm text-blue-800">
-                                    Winners Round {round}
-                                  </h3>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {renderMatchList(winnersMatches)}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {/* Losers bracket section */}
-                              {losersMatches.length > 0 && (
-                                <div className="mb-8">
-                                  <h3 className="text-lg font-medium mb-4 px-4 py-2 bg-red-50 rounded-md shadow-sm text-red-800">
-                                    Losers Round {round}
-                                  </h3>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {renderMatchList(losersMatches)}
-                                  </div>
-                                </div>
-                              )}
-                            </React.Fragment>
-                          );
-                        }
-                        
-                        // Regular round without separated brackets
-                        return (
-                          <div key={round} className="mb-8">
-                            <h3 className="text-lg font-medium mb-4 px-4 py-2 bg-gray-100 rounded-md shadow-sm">
-                              Round {round}
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {renderMatchList(roundMatches)}
-                            </div>
-                          </div>
-                        );
-                      });
-                  })()}
-                </div>
-              ) : (
-                renderBracketView()
-              )}
-            </div>
-          )}
         </div>
+
+        {error && <div role="alert" className="alert alert-error text-sm"><svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>{error}</span></div>}
+        
+        {/* Info Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div className="card bg-base-100 shadow">
+                <div className="card-body p-4">
+                    <h2 className="card-title text-base">Schedule</h2>
+                    <p>Registration Deadline: <span className="font-semibold">{formatDateTime(tournament.registrationDeadline)}</span></p>
+                    <p>Starts: <span className="font-semibold">{formatDateTime(tournament.startTime)}</span></p>
+                    {!isRegistrationOpen(tournament) && matches.length === 0 && <p className="text-warning">Registration is closed. Generate bracket if ready.</p>}
+                </div>
+            </div>
+            <div className="card bg-base-100 shadow">
+                 <div className="card-body p-4">
+                    <div className="flex justify-between items-center">
+                        <h2 className="card-title text-base">Participants ({participants.length} / {tournament.maxParticipants || '∞'})</h2>
+                        {canAddParticipants && (
+                             <button className="btn btn-xs btn-outline btn-info" onClick={() => setIsAddingParticipant(true)}>Add</button>
+                        )}
+                    </div>
+                    {isAddingParticipant && (
+                        <form onSubmit={handleAddParticipant} className="flex gap-2 mt-2">
+                            <input type="text" value={participantForm.name} onChange={e => setParticipantForm({name: e.target.value})} placeholder="Participant Name" className="input input-sm input-bordered flex-grow" required/>
+                            <button type="submit" className="btn btn-sm btn-success">Save</button>
+                            <button type="button" onClick={() => setIsAddingParticipant(false)} className="btn btn-sm btn-ghost">X</button>
+                        </form>
+                    )}
+                    {participants.length > 0 ? (
+                        <ul className="list-decimal list-inside max-h-40 overflow-y-auto text-xs mt-2">
+                            {participants.map(p => <li key={p.id}>{p.participant_name}{p.seed ? ` (S${p.seed})`: ''}</li>)}
+                        </ul>
+                    ) : <p className="text-gray-500 italic">No participants yet.</p>}
+                    {!canAddParticipants && !isAddingParticipant && matches.length === 0 && <p className="text-info text-xs mt-1">Registration closed or tournament started. Generate bracket.</p>}
+                    {matches.length > 0 && <p className="text-success text-xs mt-1">Bracket has been generated.</p>}
+                 </div>
+            </div>
+        </div>
+
+        {/* Bracket/Table View */}
+        {matches.length > 0 && tournament && (
+            <div className="card bg-base-100 shadow">
+                 <div className="card-body p-0 sm:p-4"> {/* Less padding on small screen for bracket */}
+                    <div className="flex justify-end p-2 sm:p-0 mb-2">
+                        {(tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') && (
+                             <div className="tabs tabs-boxed tabs-sm">
+                                <a className={`tab ${viewMode === 'bracket' ? 'tab-active' : ''}`} onClick={() => setViewMode('bracket')}>Bracket</a>
+                                <a className={`tab ${viewMode === 'list' ? 'tab-active' : ''}`} onClick={() => setViewMode('list')}>List</a>
+                            </div>
+                        )}
+                    </div>
+
+                    { (viewMode === 'list' && (tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') ) ? (
+                        // Basic List View placeholder - implement full list view as needed
+                        <div className="p-4">
+                           <h3 className="text-lg font-semibold mb-2">Matches (List View)</h3>
+                            {/* Group matches by round for a more structured list view */}
+                            {Object.entries(matches.reduce((acc, match) => {
+                                (acc[match.round] = acc[match.round] || []).push(match);
+                                return acc;
+                            }, {} as Record<number, Match[]>)).sort(([a],[b])=>Number(a)-Number(b)).map(([round, roundMatches]) => (
+                                <div key={round} className="mb-4">
+                                    <h4 className="font-medium text-gray-700 mb-1">Round {round}</h4>
+                                    {roundMatches.map(m => (
+                                        <div key={m.id} className="text-xs p-2 border-b hover:bg-gray-50 cursor-pointer" onClick={() => m.participant1_id && m.participant2_id && m.status !== 'COMPLETED' && setIsEditingMatch(m)}>
+                                            {getParticipantNameById(m.participant1_id)} ({m.score_participant1 ?? '-'}) vs {getParticipantNameById(m.participant2_id)} ({m.score_participant2 ?? '-'})
+                                            <span className={`ml-2 badge badge-xs ${m.status === 'COMPLETED' ? 'badge-success' : 'badge-warning'}`}>{m.status}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <BracketRenderer
+                            tournament={tournament}
+                            matches={matches}
+                            participants={participants}
+                            onMatchClick={(match) => { // Match object now directly passed
+                                // Only allow editing if participants are present and match is not completed
+                                if (match.participant1_id && match.participant2_id && match.status !== 'COMPLETED') {
+                                    setIsEditingMatch(match);
+                                }
+                            }}
+                        />
+                    )}
+                 </div>
+            </div>
+        )}
+        {matches.length === 0 && !isLoading && (
+            <div className="text-center p-6 bg-base-100 shadow rounded-lg">
+                <p className="text-gray-500">
+                    {participants.length < 2 ? "Add at least 2 participants to generate a bracket." : "Bracket has not been generated yet."}
+                </p>
+            </div>
+        )}
+
       </div>
     </ProtectedRoute>
   );
-} 
+}
