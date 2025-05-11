@@ -1,61 +1,83 @@
 // src/components/tournament/BracketRenderer.tsx
 import React from 'react';
-import DarkChallongeBracket from './DarkChallongeBracket';
+import DarkChallongeBracket from './DarkChallongeBracket'; // Or ChallongeLikeBracket, whichever you are using for SE/DE
 import RoundRobinTable from './RoundRobinTable';
+import EliminationStatsTable from './EliminationStatsTable'; // Import if you render it here (but page.tsx handles it)
 import { Tournament, Match, Participant } from '@/types/tournament';
 
 interface BracketRendererProps {
   tournament: Tournament | null;
   matches: Match[];
   participants: Participant[];
-  onMatchClick?: (match: Match) => void; // Keep this as Match type if DarkChallongeBracket's onMatchClick expects base Match.
-                                        // If DarkChallongeBracket's internal UIExtendedMatch is needed by the page, adjust type here.
-                                        // For simplicity and compatibility, let's keep it as base Match for now as the ID is what's used.
+  onMatchClick?: (match: Match) => void; // For modal editor (SE/DE) or triggering inline (RR)
+
+  // Props for inline editing specifically for RoundRobinTable
+  inlineEditingMatchId?: string | null;
+  inlineScores?: { p1: string; p2: string };
+  onInlineScoreChange?: (scores: { p1: string; p2: string }) => void;
+  onInlineScoreSubmit?: () => void;
+  onCancelInlineEdit?: () => void;
 }
 
 const BracketRenderer: React.FC<BracketRendererProps> = ({
   tournament,
   matches,
   participants,
-  onMatchClick
+  onMatchClick,
+  // Props for RoundRobinTable's inline editing, passed down from page.tsx
+  inlineEditingMatchId,
+  inlineScores,
+  onInlineScoreChange,
+  onInlineScoreSubmit,
+  onCancelInlineEdit,
 }) => {
   if (!tournament) {
-    return <div className="p-4 text-center text-gray-500">Tournament data is not available.</div>;
+    return <div className="p-4 text-center text-slate-500 italic">Loading tournament information...</div>;
   }
-  // No need to check for matches or participants here, the child components can handle empty states
 
   if (tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') {
-    if (matches.length === 0) return <div className="p-4 text-center text-gray-500">No matches generated for this bracket yet.</div>
+    // EliminationStatsTable is now rendered in page.tsx, above this BracketRenderer
+    if (participants.length < 2 && matches.length === 0) {
+        return <div className="p-6 text-center text-slate-400 italic">Add at least two participants and generate the bracket.</div>;
+    }
+    if (matches.length === 0 && participants.length >=2 ) {
+        return <div className="p-6 text-center text-slate-400">The bracket has not been generated yet. Click "Generate Bracket".</div>;
+    }
     return (
-      <DarkChallongeBracket
+      <DarkChallongeBracket // Or <ChallongeLikeBracket ... /> if you switched
         tournament={tournament}
-        matches={matches} // DarkChallongeBracket will process these internally
+        matches={matches}
         participants={participants}
-        onMatchClick={onMatchClick} // onMatchClick from DarkChallonge will send UIExtendedMatch
-                                   // page.tsx handler needs to be aware if it uses fields specific to UIExtendedMatch
-                                   // Or, DarkChallongeBracket's onMatchClick should just pass the original 'Match' part.
-                                   // Simplest: onMatchClick callback in DarkChallongeBracket will pass `match` (which is UIExtendedMatch),
-                                   // if the consuming page needs only Match fields, it's fine due to structural typing.
+        onMatchClick={onMatchClick} // This will trigger the modal editor from page.tsx
       />
     );
   }
 
   if (tournament.format === 'ROUND_ROBIN') {
+    if (participants.length < 2 && matches.length === 0) {
+        return <div className="p-6 text-center text-slate-400 italic">Add at least two participants and generate matches for Round Robin.</div>;
+    }
+    // RoundRobinTable will show "No matches" internally if matches array is empty but participants exist
     return (
       <RoundRobinTable
-        tournament={tournament} // Pass tournament for context
+        tournament={tournament}
         matches={matches}
         participants={participants}
-        onMatchClick={onMatchClick}
+        onMatchClick={onMatchClick} // This triggers inline edit setup in page.tsx
+        inlineEditingMatchId={inlineEditingMatchId}
+        inlineScores={inlineScores}
+        onInlineScoreChange={onInlineScoreChange}
+        onInlineScoreSubmit={onInlineScoreSubmit}
+        onCancelInlineEdit={onCancelInlineEdit}
       />
     );
   }
 
   if (tournament.format === 'SWISS') {
-    return <div className="p-4 text-center">Swiss format display is coming soon.</div>;
+    return <div className="p-4 text-center text-slate-400">Swiss format display is currently under development.</div>;
   }
 
-  return <div className="p-4 text-center">Unknown or unsupported tournament format: {tournament.format}</div>;
+  return <div className="p-4 text-center text-red-400">Unsupported tournament format: {tournament.format}.</div>;
 };
 
 export default BracketRenderer;
