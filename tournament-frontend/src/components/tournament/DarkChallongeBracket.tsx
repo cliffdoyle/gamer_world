@@ -3,7 +3,11 @@
 
 import React, { useEffect, useState, useRef, ReactNode } from 'react';
 
-// Defined tournament types
+// Keep existing interface definitions: Participant, Match, TournamentFormat, Tournament
+// Your Match interface should include participant1_prereq_match_id and participant2_prereq_match_id (optional strings)
+// if you want perfect connector targeting.
+// Ensure UIExtendedMatch interface is also as previously discussed
+
 interface Participant {
   id: string;
   participant_name: string; // Ensure this matches your type
@@ -17,16 +21,15 @@ interface Match {
   participant1_id: string | null;
   participant2_id: string | null;
   winner_id: string | null;
-  loser_id?: string | null; // Make sure this exists in your backend type if used
+  loser_id?: string | null;
   next_match_id: string | null;
-  loser_next_match_id: string | null; // Crucial for DE
-  // participant1_prereq_match_id: string | null; // Can be useful for TBD slots
-  // participant2_prereq_match_id: string | null; // Can be useful for TBD slots
-  score_participant1: string | number | null; // Allow number type too
-  score_participant2: string | number | null; // Allow number type too
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | string; // Allow other statuses
-  bracket_type?: 'WINNERS' | 'LOSERS' | 'GRAND_FINALS'; // Explicit from backend is best
-  // Add any other fields from your backend Match type
+  loser_next_match_id: string | null;
+  participant1_prereq_match_id?: string | null; // Add this if your API sends it
+  participant2_prereq_match_id?: string | null; // Add this if your API sends it
+  score_participant1: string | number | null;
+  score_participant2: string | number | null;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | string;
+  bracket_type?: 'WINNERS' | 'LOSERS' | 'GRAND_FINALS';
 }
 
 type TournamentFormat = 'SINGLE_ELIMINATION' | 'DOUBLE_ELIMINATION' | 'ROUND_ROBIN' | 'SWISS';
@@ -37,89 +40,71 @@ interface Tournament {
   format: TournamentFormat;
 }
 
-// Internal extended match type for UI processing
+
+// Using ui_bracket_section as suggested before
 interface UIExtendedMatch extends Match {
-  ui_bracket: 'WINNERS' | 'LOSERS' | 'GRAND_FINALS_SECTION'; // For visual grouping
-  ui_is_grand_final_match: boolean; // Is it one of the 1 or 2 GF matches?
+  ui_bracket_section: 'WINNERS' | 'LOSERS' | 'GRAND_FINALS';
   ui_participant1_name: string;
   ui_participant2_name: string;
   ui_participant1_seed?: number;
   ui_participant2_seed?: number;
-  // ui_source_match_for_p1_label?: string; // e.g., "W: M1"
-  // ui_source_match_for_p2_label?: string; // e.g., "L: M5"
 }
+
 
 interface DarkChallongeBracketProps {
   tournament: Tournament;
-  matches: Match[]; // Raw matches from API
+  matches: Match[];
   participants: Participant[];
-  onMatchClick?: (match: Match) => void;
+  onMatchClick?: (match: UIExtendedMatch) => void; // Use UIExtendedMatch
 }
 
 const DarkChallongeBracket = ({
   tournament,
-  matches: apiMatches, // Rename to distinguish from processed
+  matches: apiMatches,
   participants,
   onMatchClick,
 }: DarkChallongeBracketProps): ReactNode => {
   const svgRef = useRef<SVGSVGElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null); // Ref for the scrollable container
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [processedMatches, setProcessedMatches] = useState<UIExtendedMatch[]>([]);
   const [matchPositions, setMatchPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
 
-  // --- Layout Constants (Challonge-like, adjust as needed) ---
   const MATCH_WIDTH = 180;
-  const MATCH_HEIGHT = 50; // Increased for better readability
+  const MATCH_HEIGHT = 55; // Slightly taller
   const PLAYER_SLOT_HEIGHT = MATCH_HEIGHT / 2;
-  const HORIZONTAL_GAP_BETWEEN_ROUNDS = 80; // Space between columns
-  const VERTICAL_MATCH_SPACING_BASE = 25; // Base vertical gap between matches in a round
-  const SECTION_VERTICAL_GAP = 60; // Gap between WB and LB
-  const PADDING = 30; // Padding around the entire bracket content
+  const HORIZONTAL_GAP_BETWEEN_ROUNDS = 80;
+  const VERTICAL_MATCH_SPACING_BASE = 15; // Reduced base spacing significantly
+  const SECTION_VERTICAL_GAP = 50;       // Reduced gap between WB and LB
+  const PADDING = 30;
 
   const participantsMap = React.useMemo(() => {
     return new Map(participants.map(p => [p.id, p]));
   }, [participants]);
 
-  const getParticipantName = (id: string | null) => {
-    if (!id) return 'TBD';
-    return participantsMap.get(id)?.participant_name || 'Unknown';
-  };
-  const getParticipantSeed = (id: string | null) => {
-    return participantsMap.get(id)?.seed;
-  };
+  const getParticipantName = (id: string | null) => { /* ... (keep as is) ... */ if (!id) return 'TBD'; return participantsMap.get(id)?.participant_name || 'Unknown Player'; };
+  const getParticipantSeed = (id: string | null) => { /* ... (keep as is) ... */ return participantsMap.get(id)?.seed; };
 
   // --- Match Data Processing ---
   useEffect(() => {
     if (!apiMatches || apiMatches.length === 0) {
-        setProcessedMatches([]);
-        return;
+      setProcessedMatches([]);
+      return;
     }
-
+    // This processing logic was better in the previous full component example I gave.
+    // Let's use the `ui_bracket_section` for clarity.
     const extended: UIExtendedMatch[] = apiMatches.map(m => {
-        let ui_bracket: UIExtendedMatch['ui_bracket'] = 'WINNERS'; // Default
-        let ui_is_grand_final_match = false;
+        let ui_section: UIExtendedMatch['ui_bracket_section'] = 'WINNERS';
+        if (tournament.format === 'DOUBLE_ELIMINATION') {
+            if (m.bracket_type === 'LOSERS') ui_section = 'LOSERS';
+            else if (m.bracket_type === 'GRAND_FINALS') ui_section = 'GRAND_FINALS';
+            else ui_section = 'WINNERS'; // Default to winners if not specified for DE
+        } // For SE, all are WINNERS implicitly or by backend `bracket_type`
 
-        if (tournament.format === 'SINGLE_ELIMINATION') {
-            ui_bracket = 'WINNERS';
-        } else if (tournament.format === 'DOUBLE_ELIMINATION') {
-            if (m.bracket_type === 'WINNERS') ui_bracket = 'WINNERS';
-            else if (m.bracket_type === 'LOSERS') ui_bracket = 'LOSERS';
-            else if (m.bracket_type === 'GRAND_FINALS') {
-                ui_bracket = 'GRAND_FINALS_SECTION';
-                ui_is_grand_final_match = true;
-            } else { // Fallback if bracket_type is missing for DE (less ideal)
-                const numParticipantsPowerOfTwo = Math.pow(2, Math.ceil(Math.log2(participants.length || 2)));
-                const winnersRounds = Math.log2(numParticipantsPowerOfTwo);
-                 ui_bracket = m.round <= winnersRounds ? 'WINNERS' : 'LOSERS'; // Basic inference
-            }
-        }
-        
         return {
             ...m,
-            ui_bracket,
-            ui_is_grand_final_match,
+            ui_bracket_section: ui_section,
             ui_participant1_name: getParticipantName(m.participant1_id),
             ui_participant2_name: getParticipantName(m.participant2_id),
             ui_participant1_seed: getParticipantSeed(m.participant1_id),
@@ -130,117 +115,169 @@ const DarkChallongeBracket = ({
   }, [apiMatches, participantsMap, tournament.format, participants.length]);
 
 
-  // --- Layout Calculation ---
+  // --- Layout Calculation (REVISED) ---
   useEffect(() => {
     if (processedMatches.length === 0) {
-        setMatchPositions({});
-        setCanvasSize({width: PADDING*2, height: PADDING*2});
-        return;
-    };
+      setMatchPositions({});
+      setCanvasSize({ width: PADDING * 2, height: PADDING * 2 });
+      return;
+    }
 
     const newPositions: Record<string, { x: number; y: number }> = {};
-    let maxOverallX = 0;
-    let maxOverallY = 0;
-    let currentYOffset = PADDING;
+    let overallMaxX = 0;
+    let overallMaxY = 0;
 
-    const layoutBracketSection = (
-      matches: UIExtendedMatch[],
-      isLosersBracket: boolean = false
-    ) => {
-      if (matches.length === 0) return;
+    // Function to lay out one section of the bracket (e.g., Winners, Losers)
+    const layoutSection = (
+      sectionMatches: UIExtendedMatch[],
+      initialY: number,
+      isLosers: boolean = false
+    ): { sectionMaxY: number; sectionMaxX: number } => {
+      if (sectionMatches.length === 0) return { sectionMaxY: initialY, sectionMaxX: 0 };
 
-      const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => a - b);
-      const maxRoundInSection = rounds[rounds.length - 1];
+      let currentSectionMaxY = initialY;
+      let currentSectionMaxX = 0;
+      const rounds = [...new Set(sectionMatches.map(m => m.round))].sort((a, b) => a - b);
+      const roundData: Record<number, { yPositions: number[]; x: number; matches: UIExtendedMatch[] }> = {};
 
-      rounds.forEach(roundNum => {
-        const matchesInThisRound = matches
+
+      rounds.forEach((roundNum, roundIndex) => {
+        const matchesInThisRound = sectionMatches
           .filter(m => m.round === roundNum)
           .sort((a, b) => a.match_number - b.match_number);
 
-        const roundX = PADDING + (roundNum - 1) * (MATCH_WIDTH + HORIZONTAL_GAP_BETWEEN_ROUNDS);
-        maxOverallX = Math.max(maxOverallX, roundX + MATCH_WIDTH);
+        const roundX = PADDING + roundNum * (MATCH_WIDTH + HORIZONTAL_GAP_BETWEEN_ROUNDS);
+        currentSectionMaxX = Math.max(currentSectionMaxX, roundX + MATCH_WIDTH);
+        roundData[roundNum] = { yPositions: [], x: roundX, matches: matchesInThisRound };
 
-        // Calculate vertical spacing: more space in earlier rounds
-        const numPotentialSlotsInNextRound = Math.pow(2, maxRoundInSection - roundNum);
-        const verticalSpacing = (MATCH_HEIGHT + VERTICAL_MATCH_SPACING_BASE) * numPotentialSlotsInNextRound - MATCH_HEIGHT;
-
+        let yCursorForRound = roundIndex === 0 ? initialY : 0; // yCursor gets updated by feeder logic
 
         matchesInThisRound.forEach((match, indexInRound) => {
-          // For the first match in the round, its Y is its natural placement.
-          // Subsequent matches are placed relative to the "center" of their feeding structure.
-          let matchY = currentYOffset + (indexInRound * verticalSpacing) + (indexInRound * MATCH_HEIGHT);
+          let matchY: number;
 
-          if (roundNum > 1) {
-              // Try to align with the center of its feeders
-              const feederMatches = processedMatches.filter(
-                  (feeder) => feeder.next_match_id === match.id || (isLosersBracket && feeder.loser_next_match_id === match.id)
-              );
+          if (roundIndex === 0) { // First round of this section
+            if (indexInRound === 0) {
+              matchY = yCursorForRound;
+            } else {
+              const prevMatchId = matchesInThisRound[indexInRound - 1].id;
+              matchY = newPositions[prevMatchId].y + MATCH_HEIGHT + VERTICAL_MATCH_SPACING_BASE;
+            }
+          } else { // Subsequent rounds: position based on feeders
+            const feederMatches = processedMatches.filter(
+              fm => fm.next_match_id === match.id || (isLosers && fm.loser_next_match_id === match.id)
+            );
 
-              if (feederMatches.length > 0) {
-                  let totalFeederY = 0;
-                  let validFeeders = 0;
-                  feederMatches.forEach(fm => {
-                      if (newPositions[fm.id]) {
-                          totalFeederY += newPositions[fm.id].y;
-                          validFeeders++;
-                      }
-                  });
-                  if (validFeeders > 0) {
-                     matchY = (totalFeederY / validFeeders) + (feederMatches.length > 1 ? 0 : MATCH_HEIGHT / 2) - (MATCH_HEIGHT/2); // Adjust for single feeder alignment
-                  }
+            if (feederMatches.length > 0) {
+              let totalFeederCenterY = 0;
+              let validFeeders = 0;
+              feederMatches.forEach(fm => {
+                if (newPositions[fm.id]) {
+                  totalFeederCenterY += (newPositions[fm.id].y + MATCH_HEIGHT / 2);
+                  validFeeders++;
+                }
+              });
+              if (validFeeders > 0) {
+                matchY = (totalFeederCenterY / validFeeders) - MATCH_HEIGHT / 2;
+              } else {
+                // Fallback if feeders aren't positioned yet (shouldn't happen with sorted rounds)
+                matchY = (roundData[rounds[roundIndex-1]]?.yPositions[0] || initialY) + indexInRound * (MATCH_HEIGHT + VERTICAL_MATCH_SPACING_BASE * 2);
               }
+            } else {
+              // No feeders (e.g. bye match into R2). Position relative to others in round or previous round start.
+              if (indexInRound === 0) {
+                 matchY = roundData[rounds[roundIndex-1]]?.yPositions[0] || currentSectionMaxY // Align to previous round or current max Y
+              } else {
+                const prevMatchId = matchesInThisRound[indexInRound - 1].id;
+                matchY = newPositions[prevMatchId].y + MATCH_HEIGHT + VERTICAL_MATCH_SPACING_BASE;
+              }
+            }
           }
-          
+
+          // Crucial: Prevent overlap within the *same round* after calculating based on feeders
+          if (indexInRound > 0) {
+            const prevMatchId = matchesInThisRound[indexInRound - 1].id;
+            const minRequiredY = newPositions[prevMatchId].y + MATCH_HEIGHT + VERTICAL_MATCH_SPACING_BASE;
+            matchY = Math.max(matchY, minRequiredY);
+          }
+
           newPositions[match.id] = { x: roundX, y: matchY };
-          maxOverallY = Math.max(maxOverallY, matchY + MATCH_HEIGHT);
+          roundData[roundNum].yPositions.push(matchY);
+          currentSectionMaxY = Math.max(currentSectionMaxY, matchY + MATCH_HEIGHT);
         });
       });
-      currentYOffset = maxOverallY + (matches.length > 0 ? SECTION_VERTICAL_GAP : 0);
+      return { sectionMaxY: currentSectionMaxY, sectionMaxX: currentSectionMaxX };
     };
 
-    const winners = processedMatches.filter(m => m.ui_bracket === 'WINNERS');
-    const losers = processedMatches.filter(m => m.ui_bracket === 'LOSERS');
-    const grandFinals = processedMatches.filter(m => m.ui_bracket === 'GRAND_FINALS_SECTION')
-                        .sort((a,b)=> a.match_number - b.match_number); // Ensure GF matches are ordered
+    let currentGlobalYOffset = PADDING;
 
-    layoutBracketSection(winners);
-    if (tournament.format === 'DOUBLE_ELIMINATION') {
-        layoutBracketSection(losers, true);
+    const winnersMatches = processedMatches.filter(m => m.ui_bracket_section === 'WINNERS');
+    const losersMatches = processedMatches.filter(m => m.ui_bracket_section === 'LOSERS');
+    const grandFinalsMatches = processedMatches.filter(m => m.ui_bracket_section === 'GRAND_FINALS')
+                                .sort((a, b) => a.round - b.round || a.match_number - b.match_number);
+
+
+    const { sectionMaxY: winnersEndBracketY, sectionMaxX: winnersEndBracketX } = layoutSection(
+      winnersMatches,
+      currentGlobalYOffset
+    );
+    overallMaxX = Math.max(overallMaxX, winnersEndBracketX);
+    overallMaxY = Math.max(overallMaxY, winnersEndBracketY);
+    currentGlobalYOffset = winnersEndBracketY + (winnersMatches.length > 0 ? SECTION_VERTICAL_GAP : 0);
+
+
+    if (tournament.format === 'DOUBLE_ELIMINATION' && losersMatches.length > 0) {
+      const { sectionMaxY: losersEndBracketY, sectionMaxX: losersEndBracketX } = layoutSection(
+        losersMatches,
+        currentGlobalYOffset, // Start losers below winners
+        true
+      );
+      overallMaxX = Math.max(overallMaxX, losersEndBracketX);
+      overallMaxY = Math.max(overallMaxY, losersEndBracketY);
+      currentGlobalYOffset = losersEndBracketY + (losersMatches.length > 0 ? SECTION_VERTICAL_GAP : 0);
     }
     
-    // Layout Grand Finals separately, often centered or at the end of WB
-    if (grandFinals.length > 0) {
-        const lastWinnerRoundX = PADDING + (Math.max(0, ...winners.map(m=>m.round)) -1) * (MATCH_WIDTH + HORIZONTAL_GAP_BETWEEN_ROUNDS);
-        const gfRoundX = lastWinnerRoundX + MATCH_WIDTH + HORIZONTAL_GAP_BETWEEN_ROUNDS;
-        maxOverallX = Math.max(maxOverallX, gfRoundX + MATCH_WIDTH);
+    if (grandFinalsMatches.length > 0) {
+      const lastRoundOfWinners = Math.max(0, ...winnersMatches.map(m => m.round));
+      // Place GF one "round" after the last winner's round, or after losers if DE
+      let gfRoundX = PADDING + (lastRoundOfWinners + 1) * (MATCH_WIDTH + HORIZONTAL_GAP_BETWEEN_ROUNDS);
+       if (tournament.format === 'DOUBLE_ELIMINATION' && losersMatches.length > 0) {
+           const lastRoundOfLosers = Math.max(0, ...losersMatches.map(m => m.round));
+           gfRoundX = PADDING + (Math.max(lastRoundOfWinners, lastRoundOfLosers) +1) * (MATCH_WIDTH + HORIZONTAL_GAP_BETWEEN_ROUNDS);
+       }
 
-        let gfStartY = PADDING;
-        if (winners.length > 0) {
-             // Try to center GF relative to winners final
-            const wfMatch = winners.find(m => !m.next_match_id && !m.ui_is_grand_final_match && m.round === Math.max(...winners.map(wm => wm.round)));
-            if (wfMatch && newPositions[wfMatch.id]) {
-                gfStartY = newPositions[wfMatch.id].y;
-            }
-        }
-        
-        grandFinals.forEach((gfMatch, index) => {
-            newPositions[gfMatch.id] = {
-                x: gfRoundX,
-                y: gfStartY + index * (MATCH_HEIGHT + VERTICAL_MATCH_SPACING_BASE)
-            };
-            maxOverallY = Math.max(maxOverallY, newPositions[gfMatch.id].y + MATCH_HEIGHT);
-        });
+      overallMaxX = Math.max(overallMaxX, gfRoundX + MATCH_WIDTH);
+
+      // Attempt to vertically center Grand Finals with Winners Bracket Final (if available)
+      let gfStartY = PADDING;
+      const wbFinal = winnersMatches.find(m => !m.next_match_id && m.round === lastRoundOfWinners);
+      if (wbFinal && newPositions[wbFinal.id]) {
+           const totalGfHeight = grandFinalsMatches.length * MATCH_HEIGHT + (grandFinalsMatches.length - 1) * VERTICAL_MATCH_SPACING_BASE;
+           gfStartY = newPositions[wbFinal.id].y + (MATCH_HEIGHT / 2) - (totalGfHeight / 2);
+           gfStartY = Math.max(PADDING, gfStartY); // Don't let it go above padding
+      } else {
+           // Fallback: start it after the last drawn content if WB final not found or not positioned
+           gfStartY = currentGlobalYOffset;
+      }
+
+
+      grandFinalsMatches.forEach((gfMatch, index) => {
+        const yPos = gfStartY + index * (MATCH_HEIGHT + VERTICAL_MATCH_SPACING_BASE);
+        newPositions[gfMatch.id] = { x: gfRoundX, y: yPos };
+        overallMaxY = Math.max(overallMaxY, yPos + MATCH_HEIGHT);
+      });
     }
 
 
     setMatchPositions(newPositions);
     setCanvasSize({
-      width: Math.max(800, maxOverallX + PADDING),
-      height: Math.max(600, maxOverallY + PADDING),
+      width: Math.max(800, overallMaxX + PADDING), // Max of default or content
+      height: Math.max(600, overallMaxY + PADDING), // Max of default or content
     });
-  }, [processedMatches, tournament.format, participants.length]); // Re-calculate if these change
+  }, [processedMatches, tournament.format]);
+
 
   // --- Rendering Functions ---
+  // renderMatchSVG - (largely keep as is, but ensure it uses UIExtendedMatch)
   const renderMatchSVG = (match: UIExtendedMatch) => {
     const pos = matchPositions[match.id];
     if (!pos) return null;
@@ -253,8 +290,9 @@ const DarkChallongeBracket = ({
     const p1Score = match.score_participant1 ?? '-';
     const p2Score = match.score_participant2 ?? '-';
 
-    const isP1Winner = match.winner_id === match.participant1_id;
-    const isP2Winner = match.winner_id === match.participant2_id;
+    // Check against null IDs for winner status
+    const isP1Winner = match.winner_id === match.participant1_id && match.participant1_id !== null;
+    const isP2Winner = match.winner_id === match.participant2_id && match.participant2_id !== null;
 
     return (
       <g
@@ -265,14 +303,14 @@ const DarkChallongeBracket = ({
         className="match-group hover:opacity-80 transition-opacity"
       >
         {/* Main Box */}
-        <rect x="0" y="0" width={MATCH_WIDTH} height={MATCH_HEIGHT} rx="3" ry="3" fill="#2d3748" stroke="#4a5567" />
+        <rect x="0" y="0" width={MATCH_WIDTH} height={MATCH_HEIGHT} rx="3" ry="3" fill="#2d3748" stroke="#4a5567" strokeWidth="1.5"/>
 
         {/* Top Player Slot */}
         <rect x="0" y="0" width={MATCH_WIDTH} height={PLAYER_SLOT_HEIGHT} fill="transparent" />
-        {p1Seed && (
+        {p1Seed != null && (
           <text x="7" y={PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" fontSize="10" fill="#9ca3af">{p1Seed}</text>
         )}
-        <text x={p1Seed ? 25 : 10} y={PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" fontSize="12" fill={isP1Winner ? "#68d391" : "#e5e7eb"} fontWeight={isP1Winner ? "bold" : "normal"} className="participant-name">{p1Name}</text>
+        <text x={p1Seed != null ? 25 : 10} y={PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" fontSize="12" fill={isP1Winner ? "#68d391" : "#e5e7eb"} fontWeight={isP1Winner ? "bold" : "normal"} className="participant-name">{p1Name}</text>
         <text x={MATCH_WIDTH - 10} y={PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" textAnchor="end" fontSize="12" fill={isP1Winner ? "#68d391" : "#e5e7eb"} fontWeight={isP1Winner ? "bold" : "normal"}>{p1Score}</text>
 
         {/* Divider */}
@@ -280,90 +318,105 @@ const DarkChallongeBracket = ({
 
         {/* Bottom Player Slot */}
         <rect x="0" y={PLAYER_SLOT_HEIGHT} width={MATCH_WIDTH} height={PLAYER_SLOT_HEIGHT} fill="transparent" />
-        {p2Seed && (
+        {p2Seed != null && (
             <text x="7" y={PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" fontSize="10" fill="#9ca3af">{p2Seed}</text>
         )}
-        <text x={p2Seed ? 25 : 10} y={PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" fontSize="12" fill={isP2Winner ? "#68d391" : "#e5e7eb"} fontWeight={isP2Winner ? "bold" : "normal"} className="participant-name">{p2Name}</text>
+        <text x={p2Seed != null ? 25 : 10} y={PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" fontSize="12" fill={isP2Winner ? "#68d391" : "#e5e7eb"} fontWeight={isP2Winner ? "bold" : "normal"} className="participant-name">{p2Name}</text>
         <text x={MATCH_WIDTH - 10} y={PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2} dominantBaseline="middle" textAnchor="end" fontSize="12" fill={isP2Winner ? "#68d391" : "#e5e7eb"} fontWeight={isP2Winner ? "bold" : "normal"}>{p2Score}</text>
       
-        {/* Match Number (optional, can add if desired) */}
-         <text x={MATCH_WIDTH / 2} y={-8} textAnchor="middle" fontSize="10" fill="#718096">M{match.match_number}</text>
+         <text x={MATCH_WIDTH / 2} y={-8} textAnchor="middle" fontSize="10" fill="#718096">
+            M{match.match_number} {match.ui_bracket_section !== 'WINNERS' ? `(${match.ui_bracket_section.substring(0,1)})` : ''}
+         </text>
       </g>
     );
   };
 
+  // renderConnectorLinesSVG - REVISED for clarity and better connection points
   const renderConnectorLinesSVG = () => {
     const lines: React.ReactNode[] = [];
+    const H_OFFSET = HORIZONTAL_GAP_BETWEEN_ROUNDS / 2;
+
     processedMatches.forEach(sourceMatch => {
       const sourcePos = matchPositions[sourceMatch.id];
       if (!sourcePos) return;
 
-      // Winner Line
+      // WINNER LINES
       if (sourceMatch.next_match_id) {
         const targetMatch = processedMatches.find(m => m.id === sourceMatch.next_match_id);
         const targetPos = targetMatch ? matchPositions[targetMatch.id] : null;
+
         if (targetMatch && targetPos) {
-          const startX = sourcePos.x + MATCH_WIDTH;
-          const startY = sourcePos.y + PLAYER_SLOT_HEIGHT / 2; // Mid-point of the top player slot (winner usually advances from top) OR overall mid. For simplicity: MATCH_HEIGHT/2 for general case.
-          const endX = targetPos.x;
-          let endY = targetPos.y + PLAYER_SLOT_HEIGHT / 2; // Feeds into P1 slot of next match
+          const sourceX = sourcePos.x + MATCH_WIDTH;
+          // Default source Y from middle of the match box
+          let sourceY = sourcePos.y + MATCH_HEIGHT / 2; 
 
-           // If this sourceMatch is an odd match_number, it might feed into P1, if even into P2 of target.
-           // This needs backend to specify which slot (p1_prereq_match_id vs p2_prereq_match_id)
-           // Or, a common convention: first listed feeder goes to P1, second to P2.
-           // For simplicity, assume it feeds into the center of the target player slot that the *winner* would occupy.
-           // Which slot does a winner of `sourceMatch` go to in `targetMatch`?
-           // Let's assume all winners feed generally into the target match's vertical center for now, simplify line.
-           
-           const targetMidY = targetPos.y + MATCH_HEIGHT / 2;
-           // If sourceMatch feeds the first participant of targetMatch OR targetMatch's participant1_id matches winner of sourceMatch if source is COMPLETED
-           if (targetMatch.participant1_prereq_match_id === sourceMatch.id || (targetMatch.participant1_id && sourceMatch.winner_id === targetMatch.participant1_id)) {
-               endY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
-           } 
-           // If sourceMatch feeds the second participant
-           else if (targetMatch.participant2_prereq_match_id === sourceMatch.id || (targetMatch.participant2_id && sourceMatch.winner_id === targetMatch.participant2_id)) {
-               endY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
-           } else {
-                // Fallback: if not determined, use overall middle
-                endY = targetPos.y + MATCH_HEIGHT / 2;
-                // More advanced: check if targetMatch.participant1_id is null, if so, this winner likely goes there
-                if(targetMatch.participant1_id === null) endY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
-                else if(targetMatch.participant2_id === null) endY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
-           }
+          const targetX = targetPos.x;
+          let targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2; // Default to P1 slot of target
 
+          // Try to determine target slot more accurately
+          // 1. Using participant_prereq_match_id from target match (BEST)
+          if (targetMatch.participant1_prereq_match_id === sourceMatch.id) {
+            targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
+          } else if (targetMatch.participant2_prereq_match_id === sourceMatch.id) {
+            targetY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
+          }
+          // 2. Fallback: If target slot P1 is TBD, connect there. Else if P2 is TBD, connect there.
+          else if (targetMatch.participant1_id === null && targetMatch.status === 'PENDING') {
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
+          } else if (targetMatch.participant2_id === null && targetMatch.status === 'PENDING') {
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
+          }
+          // 3. Further Fallback: Based on whether source match winner matches an existing participant in target
+          else if (sourceMatch.winner_id && targetMatch.participant1_id === sourceMatch.winner_id){
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
+          } else if (sourceMatch.winner_id && targetMatch.participant2_id === sourceMatch.winner_id){
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
+          }
+           // As a last resort, if targetting P1 slot, source Y is often middle of top player slot.
+           // If targetting P2 slot, source Y is middle of bottom player slot.
+           // For now, keeping sourceY = sourcePos.y + MATCH_HEIGHT / 2 (middle) which is generally robust.
 
           lines.push(
             <path key={`w-${sourceMatch.id}`}
-                  d={`M ${startX} ${sourcePos.y + MATCH_HEIGHT/2} L ${startX + HORIZONTAL_GAP_BETWEEN_ROUNDS/2} ${sourcePos.y + MATCH_HEIGHT/2} L ${startX + HORIZONTAL_GAP_BETWEEN_ROUNDS/2} ${endY} L ${endX} ${endY}`}
+                  d={`M ${sourceX} ${sourceY} L ${sourceX + H_OFFSET} ${sourceY} L ${targetX - H_OFFSET} ${targetY} L ${targetX} ${targetY}`}
                   stroke="#4b5563" strokeWidth="1.5" fill="none" />
           );
         }
       }
-      // Loser Line (for Double Elimination)
+
+      // LOSER LINES (for Double Elimination)
       if (tournament.format === 'DOUBLE_ELIMINATION' && sourceMatch.loser_next_match_id) {
         const targetMatch = processedMatches.find(m => m.id === sourceMatch.loser_next_match_id);
         const targetPos = targetMatch ? matchPositions[targetMatch.id] : null;
+
         if (targetMatch && targetPos) {
-          const startX = sourcePos.x + MATCH_WIDTH / 2; // Center of source match
-          const startY = sourcePos.y + MATCH_HEIGHT;    // Bottom of source match
-          const endX = targetPos.x;
-          let endY = targetPos.y + PLAYER_SLOT_HEIGHT / 2; // Default to P1 slot
+          // Loser lines usually drop down from source match center bottom
+          const sourceX = sourcePos.x + MATCH_WIDTH / 2;
+          const sourceY = sourcePos.y + MATCH_HEIGHT;
+          const targetX = targetPos.x; // Target is left edge
+          let targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2; // Default to P1 slot of target
 
-           if (targetMatch.participant1_prereq_match_id === sourceMatch.id || (targetMatch.participant1_id && sourceMatch.loser_id === targetMatch.participant1_id)) { // assuming loser_id is available
-               endY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
+           // Similar logic to winner lines for determining targetY
+           if (targetMatch.participant1_prereq_match_id === sourceMatch.id) { // (Unlikely prereq refers to loser path, but check)
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
+           } else if (targetMatch.participant2_prereq_match_id === sourceMatch.id) {
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
+           } else if (targetMatch.participant1_id === null && targetMatch.status === 'PENDING') {
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
+           } else if (targetMatch.participant2_id === null && targetMatch.status === 'PENDING') {
+             targetY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
+           } else if (sourceMatch.loser_id && targetMatch.participant1_id === sourceMatch.loser_id){
+              targetY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
+           } else if (sourceMatch.loser_id && targetMatch.participant2_id === sourceMatch.loser_id){
+              targetY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
            }
-           else if (targetMatch.participant2_prereq_match_id === sourceMatch.id || (targetMatch.participant2_id && sourceMatch.loser_id === targetMatch.participant2_id)) {
-               endY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
-           } else {
-                if(targetMatch.participant1_id === null) endY = targetPos.y + PLAYER_SLOT_HEIGHT / 2;
-                else if(targetMatch.participant2_id === null) endY = targetPos.y + PLAYER_SLOT_HEIGHT + PLAYER_SLOT_HEIGHT / 2;
-           }
 
-
+          // Loser line path: Down, then across, then to target
+          const dropY = sourceY + SECTION_VERTICAL_GAP / 3;
           lines.push(
             <path key={`l-${sourceMatch.id}`}
-                  d={`M ${startX} ${startY} L ${startX} ${startY + SECTION_VERTICAL_GAP/3} L ${endX - HORIZONTAL_GAP_BETWEEN_ROUNDS/2} ${startY + SECTION_VERTICAL_GAP/3} L ${endX - HORIZONTAL_GAP_BETWEEN_ROUNDS/2} ${endY} L ${endX} ${endY}`}
-                  stroke="#7f1d1d" strokeWidth="1.5" fill="none" strokeDasharray="3,3" />
+                  d={`M ${sourceX} ${sourceY} L ${sourceX} ${dropY} L ${targetX - H_OFFSET} ${dropY} L ${targetX - H_OFFSET} ${targetY} L ${targetX} ${targetY}`}
+                  stroke="#a78bfa" strokeWidth="1.5" fill="none" strokeDasharray="3,3" />
           );
         }
       }
@@ -372,23 +425,14 @@ const DarkChallongeBracket = ({
   };
 
 
-  // --- Component Return ---
   return (
     <div ref={containerRef} className="challonge-bracket-viewer bg-gray-800 text-gray-200 p-4 overflow-auto" style={{width: '100%'}}>
-      {/* Add zoom/pan controls if desired here */}
       <svg ref={svgRef} width={canvasSize.width} height={canvasSize.height} style={{ minWidth: '100%', display: 'block' }}>
-        {/* renderRoundHeadersSVG() if you want SVG round headers */}
         {renderConnectorLinesSVG()}
         {processedMatches.map(match => renderMatchSVG(match))}
       </svg>
-      <style jsx global>{`
-        .participant-name {
-          text-overflow: ellipsis;
-          overflow: hidden;
-          white-space: nowrap;
-          max-width: ${MATCH_WIDTH - 60}px; /* Adjust based on seed/score box widths */
-        }
-      `}</style>
+      {/* Keep the participant-name style if you implement more robust truncation in renderMatchSVG, or remove if not needed */}
+      {/* <style jsx global>{` ... `}</style> */}
     </div>
   );
 };
