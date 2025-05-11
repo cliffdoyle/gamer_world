@@ -45,7 +45,7 @@ type Match struct {
 	UpdatedAt         time.Time   `json:"updated_at"`
 	MatchNotes        string      `json:"match_notes,omitempty"`
 	MatchProofs       []string    `json:"match_proofs,omitempty"`
-	BracketType       BracketType    `json:"bracket_type"`       // WINNERS, LOSERS, GRAND_FINALS
+	BracketType       BracketType `json:"bracket_type"`       // WINNERS, LOSERS, GRAND_FINALS
 	// PreviousMatchIDs  []uuid.UUID    `json:"previous_match_ids"` // for traceability
 }
 
@@ -69,6 +69,7 @@ type MatchResponse struct {
 	CreatedAt         time.Time   `json:"created_at"`
 	MatchNotes        string      `json:"match_notes,omitempty"`
 	MatchProofs       []string    `json:"match_proofs,omitempty"`
+	BracketType       BracketType `json:"bracket_type"` // WINNERS, LOSERS, GRAND_FINALS
 }
 
 // ScoreUpdateRequest represents a request to update match scores
