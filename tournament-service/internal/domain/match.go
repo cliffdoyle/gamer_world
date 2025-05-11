@@ -24,6 +24,14 @@ const (
 	GrandFinals    BracketType = "GRAND_FINALS"
 )
 
+// PrereqSourceType indicates whether a participant comes from a WIN or LOSS of a prerequisite match
+type PrereqSourceType string
+
+const (
+	PrereqResultWinner PrereqSourceType = "WINNER"
+	PrereqResultLoser  PrereqSourceType = "LOSER"
+)
+
 // Match represents a tournament match
 type Match struct {
 	ID                uuid.UUID   `json:"id"`
@@ -47,6 +55,11 @@ type Match struct {
 	MatchProofs       []string    `json:"match_proofs,omitempty"`
 	BracketType       BracketType `json:"bracket_type"`       // WINNERS, LOSERS, GRAND_FINALS
 	// PreviousMatchIDs  []uuid.UUID    `json:"previous_match_ids"` // for traceability
+	// --- NEW FIELDS FOR TBD RESOLUTION ---
+	Participant1PrereqMatchID         *uuid.UUID       `json:"participant1_prereq_match_id,omitempty"`
+	Participant2PrereqMatchID         *uuid.UUID       `json:"participant2_prereq_match_id,omitempty"`
+	Participant1PrereqMatchResultSource *PrereqSourceType `json:"participant1_prereq_match_result_source,omitempty"` // "WINNER" or "LOSER"
+	Participant2PrereqMatchResultSource *PrereqSourceType `json:"participant2_prereq_match_result_source,omitempty"` // "WINNER" or "LOSER"
 }
 
 // MatchResponse represents the API response for a match
@@ -70,6 +83,11 @@ type MatchResponse struct {
 	MatchNotes        string      `json:"match_notes,omitempty"`
 	MatchProofs       []string    `json:"match_proofs,omitempty"`
 	BracketType       BracketType `json:"bracket_type"` // WINNERS, LOSERS, GRAND_FINALS
+	// --- NEW FIELDS FOR TBD RESOLUTION ---
+	Participant1PrereqMatchID         *uuid.UUID       `json:"participant1_prereq_match_id,omitempty"`
+	Participant2PrereqMatchID         *uuid.UUID       `json:"participant2_prereq_match_id,omitempty"`
+	Participant1PrereqMatchResultSource *PrereqSourceType `json:"participant1_prereq_match_result_source,omitempty"`
+	Participant2PrereqMatchResultSource *PrereqSourceType `json:"participant2_prereq_match_result_source,omitempty"`
 }
 
 // ScoreUpdateRequest represents a request to update match scores
