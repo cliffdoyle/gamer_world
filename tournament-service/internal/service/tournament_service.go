@@ -751,6 +751,7 @@ func (s *tournamentService) GetMatchesByParticipant(
 }
 
 // UpdateMatchScore updates the score of a match and advances winners if needed
+// UpdateMatchScore updates the score of a match and advances winners if needed
 func (s *tournamentService) UpdateMatchScore(
 	ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, userID uuid.UUID,
 	request *domain.ScoreUpdateRequest,
@@ -772,123 +773,158 @@ func (s *tournamentService) UpdateMatchScore(
 		return fmt.Errorf("failed to get tournament: %w", err)
 	}
 
-	// Temporarily removing participant validation
-	// if match.Participant1ID != nil && *match.Participant1ID != userID &&
-	//	match.Participant2ID != nil && *match.Participant2ID != userID {
-	//	return errors.New("user is not a participant in this match")
-	// }
-
-	// Update scores
+	// Update scores from request
 	match.ScoreParticipant1 = request.ScoreParticipant1
 	match.ScoreParticipant2 = request.ScoreParticipant2
-	match.MatchNotes = request.MatchNotes
-	match.MatchProofs = request.MatchProofs
-
-	// Determine winner based on tournament format
-	var winnerID, loserID *uuid.UUID
-	switch tournament.Format {
-	case domain.SingleElimination, domain.DoubleElimination:
-		// Higher score wins
-		if match.ScoreParticipant1 > match.ScoreParticipant2 {
-			winnerID = match.Participant1ID
-			loserID = match.Participant2ID
-		} else if match.ScoreParticipant2 > match.ScoreParticipant1 {
-			winnerID = match.Participant2ID
-			loserID = match.Participant1ID
-		}
-	case domain.RoundRobin:
-		// No winner determination needed for round robin
-		match.Status = domain.MatchCompleted
-	case domain.Swiss:
-		// Higher score wins
-		if match.ScoreParticipant1 > match.ScoreParticipant2 {
-			winnerID = match.Participant1ID
-			loserID = match.Participant2ID
-		} else if match.ScoreParticipant2 > match.ScoreParticipant1 {
-			winnerID = match.Participant2ID
-			loserID = match.Participant1ID
-		}
+	if request.MatchNotes != "" { // Check if MatchNotes is part of ScoreUpdateRequest and not empty
+		match.MatchNotes = request.MatchNotes
+	}
+	if len(request.MatchProofs) > 0 { // Check if MatchProofs is part of ScoreUpdateRequest and not empty
+		match.MatchProofs = request.MatchProofs
 	}
 
-	// If we have a winner, update match status and advance
-	if winnerID != nil {
-		match.WinnerID = winnerID
-		match.LoserID = loserID
-		match.Status = domain.MatchCompleted
-		match.CompletedTime = &time.Time{}
-		*match.CompletedTime = time.Now()
+	// Declare winnerID and loserID. These will be populated if scores are unequal.
+	var winnerID, loserID *uuid.UUID
 
-		// Update match
-		err = s.matchRepo.Update(ctx, match)
-		if err != nil {
-			return fmt.Errorf("failed to update match: %w", err)
+	// Determine winnerID and loserID based on scores (applies to all formats where unequal scores mean a winner)
+	if match.ScoreParticipant1 > match.ScoreParticipant2 {
+		winnerID = match.Participant1ID
+		loserID = match.Participant2ID
+	} else if match.ScoreParticipant2 > match.ScoreParticipant1 {
+		winnerID = match.Participant2ID
+		loserID = match.Participant1ID
+	}
+	// If scores are equal, winnerID and loserID remain nil (signifying a draw)
+
+	// Apply properties that are common for any valid score update leading to completion
+	match.Status = domain.MatchCompleted
+	now := time.Now()
+	match.CompletedTime = &now
+	match.WinnerID = winnerID // This will be nil if it was a draw
+	match.LoserID = loserID   // This will be nil if it was a draw or if participants were nil
+
+
+	// Perform format-specific validation, e.g., for ties
+	// This switch is now primarily for validation or format-specific post-score-update logic,
+	// not for initial winner determination based on simple score comparison.
+	switch tournament.Format {
+	case domain.SingleElimination, domain.DoubleElimination, domain.Swiss:
+		// These formats typically do not allow ties if scores are reported.
+		// winnerID would be nil if scores are equal.
+		if winnerID == nil && (request.ScoreParticipant1 != 0 || request.ScoreParticipant2 != 0 || match.Participant1ID != nil || match.Participant2ID != nil) {
+			// If it's still a draw (winnerID is nil), and it wasn't an unplayed match (0-0 with no one set)
+			// then it's an invalid tie.
+			// Check if participants are set to avoid erroring on a truly unplayed match (0-0 where p1/p2 are nil)
+			if match.Participant1ID != nil && match.Participant2ID != nil {
+				return fmt.Errorf("matches in %s format cannot end in a tie when scores are reported (%d-%d)",
+					tournament.Format, match.ScoreParticipant1, match.ScoreParticipant2)
+			}
 		}
+	case domain.RoundRobin:
+		// Ties are allowed. WinnerID will be nil if scores are equal, which is correct.
+		// Status already set to completed.
+		break // No specific validation against ties needed here.
+	}
 
-		// For double elimination tournaments:
-		// Move loser to losers bracket if applicable
-		if tournament.Format == domain.DoubleElimination && loserID != nil && match.LoserNextMatchID != nil {
-			// Get the loser's destination match
-			loserMatch, err := s.matchRepo.GetByID(ctx, *match.LoserNextMatchID)
-			if err != nil {
-				log.Printf("Warning: Failed to get loser's next match: %v", err)
+
+	// Save the updated match with scores, winner, loser, status, and completed time
+	err = s.matchRepo.Update(ctx, match)
+	if err != nil {
+		return fmt.Errorf("failed to update match %s: %w", match.ID, err)
+	}
+
+
+	// --- Post-Update Logic: Advancement and Tournament Completion ---
+	// Only proceed with advancement if there was an actual winner assigned to the match object
+	if match.WinnerID != nil {
+		// For double elimination tournaments: Move loser
+		if tournament.Format == domain.DoubleElimination && match.LoserID != nil && match.LoserNextMatchID != nil {
+			loserMatch, errGetLoser := s.matchRepo.GetByID(ctx, *match.LoserNextMatchID)
+			if errGetLoser != nil {
+				log.Printf("Warning (TID: %s, MID: %s): Failed to get loser's next match %s: %v", tournamentID, matchID, *match.LoserNextMatchID, errGetLoser)
 			} else {
-				// Determine which slot to put the loser in
+				assigned := false
 				if loserMatch.Participant1ID == nil {
-					loserMatch.Participant1ID = loserID
+					loserMatch.Participant1ID = match.LoserID
+					assigned = true
+				} else if loserMatch.Participant2ID == nil { // Check if second slot is free
+					loserMatch.Participant2ID = match.LoserID
+					assigned = true
 				} else {
-					loserMatch.Participant2ID = loserID
+					log.Printf("Warning (TID: %s, MID: %s): Loser's next match %s already has both participants assigned.", tournamentID, matchID, loserMatch.ID)
 				}
 
-				// Update loser match with the losing participant
-				err = s.matchRepo.Update(ctx, loserMatch)
-				if err != nil {
-					log.Printf("Warning: Failed to move loser to losers bracket: %v", err)
+				if assigned { // Only update if we actually placed the participant
+					if errUpdateLoser := s.matchRepo.Update(ctx, loserMatch); errUpdateLoser != nil {
+						log.Printf("Warning (TID: %s, MID: %s): Failed to update loser's next match %s with participant %s: %v", tournamentID, matchID, loserMatch.ID, *match.LoserID, errUpdateLoser)
+					}
 				}
 			}
 		}
 
 		// Advance winner to next match if applicable
 		if match.NextMatchID != nil {
-			nextMatch, err := s.matchRepo.GetByID(ctx, *match.NextMatchID)
-			if err != nil {
-				return fmt.Errorf("failed to get next match: %w", err)
+			nextMatch, errGetNext := s.matchRepo.GetByID(ctx, *match.NextMatchID)
+			if errGetNext != nil {
+				// This is generally a more critical error if a next match is defined but not found
+				return fmt.Errorf("error getting next match %s for winner of %s (TID: %s): %w", *match.NextMatchID, matchID, tournamentID, errGetNext)
 			}
-
-			// Determine which slot to put the winner in
+			assigned := false
 			if nextMatch.Participant1ID == nil {
-				nextMatch.Participant1ID = winnerID
+				nextMatch.Participant1ID = match.WinnerID
+				assigned = true
+			} else if nextMatch.Participant2ID == nil { // Check if second slot is free
+				nextMatch.Participant2ID = match.WinnerID
+				assigned = true
 			} else {
-				nextMatch.Participant2ID = winnerID
+				log.Printf("Warning (TID: %s, MID: %s): Winner's next match %s already has both participants assigned.", tournamentID, matchID, nextMatch.ID)
 			}
 
-			// Update next match
-			err = s.matchRepo.Update(ctx, nextMatch)
-			if err != nil {
-				return fmt.Errorf("failed to update next match: %w", err)
+			if assigned { // Only update if we actually placed the participant
+				if errUpdateNext := s.matchRepo.Update(ctx, nextMatch); errUpdateNext != nil {
+					return fmt.Errorf("error updating next match %s with winner %s from match %s (TID: %s): %w", nextMatch.ID, *match.WinnerID, matchID, tournamentID, errUpdateNext)
+				}
 			}
 		}
+	} // End of advancement logic (if match.WinnerID != nil)
 
-		// Check if tournament is complete
-		completed, err := s.checkTournamentCompletion(ctx, tournament.ID)
-		if err != nil {
-			return fmt.Errorf("failed to check tournament completion: %w", err)
-		}
-		if completed {
-			err = s.UpdateTournamentStatus(ctx, tournament.ID, domain.Completed)
-			if err != nil {
-				return fmt.Errorf("failed to update tournament status: %w", err)
-			}
-		}
-	} else {
-		// No winner yet, just update the match
-		err = s.matchRepo.Update(ctx, match)
-		if err != nil {
-			return fmt.Errorf("failed to update match: %w", err)
+	// Check if tournament is complete. This is called for any completed match (win, loss, or draw).
+	completed, errCheck := s.checkTournamentCompletion(ctx, tournament.ID)
+	if errCheck != nil {
+		// Log this as a warning, but the primary score update was successful.
+		log.Printf("Warning (TID: %s): Failed to check tournament completion after match %s update: %v", tournamentID, matchID, errCheck)
+	} else if completed {
+		// Ensure your tournamentRepo has UpdateTournamentStatus and it's correctly defined
+		if errStatusUpdate := s.UpdateTournamentStatus(ctx, tournament.ID, domain.Completed); errStatusUpdate != nil {
+			log.Printf("Warning (TID: %s): Failed to update tournament status to COMPLETED: %v", tournamentID, errStatusUpdate)
 		}
 	}
 
 	return nil
 }
+
+// checkTournamentCompletion checks if all matches in a tournament are completed
+// func (s *tournamentService) checkTournamentCompletion(ctx context.Context, tournamentID uuid.UUID) (bool, error) {
+// 	allMatches, err := s.matchRepo.GetByTournamentID(ctx, tournamentID) // s.matchRepo must have this method
+// 	if err != nil {
+// 		return false, fmt.Errorf("failed to get matches for tournament %s during completion check: %w", tournamentID, err)
+// 	}
+
+// 	// If there are no matches at all for the tournament (e.g., bracket not generated), it's not "completed" in terms of play.
+// 	if len(allMatches) == 0 {
+// 		// This scenario depends on your system's definition of a tournament lifecycle.
+// 		// If generating a bracket always creates matches, then 0 matches means not started.
+// 		return false, nil
+// 	}
+
+// 	for _, m := range allMatches {
+// 		if m.Status != domain.MatchCompleted {
+// 			return false, nil // Found at least one match that is not yet completed
+// 		}
+// 	}
+
+// 	return true, nil // All matches found are in 'COMPLETED' status
+// }
 
 // checkTournamentCompletion checks if all matches in a tournament are completed
 func (s *tournamentService) checkTournamentCompletion(ctx context.Context, tournamentID uuid.UUID) (bool, error) {
