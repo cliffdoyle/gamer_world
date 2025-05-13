@@ -1,3 +1,5 @@
+// src/config.ts
+
 export const API_CONFIG = {
   BASE_URL: 'http://localhost:8082',
   AUTH_URL: 'http://localhost:8081',
@@ -10,5 +12,7 @@ export const API_CONFIG = {
     MATCHES: (tournamentId: string) => `/tournaments/${tournamentId}/matches`,
     GENERATE_BRACKET: (id: string) => `/tournaments/${id}/bracket`,
     UPDATE_MATCH: (tournamentId: string, matchId: string) => `/tournaments/${tournamentId}/matches/${matchId}`,
+    // === ADD THE NEW ENDPOINT HERE ===
+    TOURNAMENT_STATUS: (id: string) => `/tournaments/${id}/status`,
   },
-} as const; 
+} as const;
