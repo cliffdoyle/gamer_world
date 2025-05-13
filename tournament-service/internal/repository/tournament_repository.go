@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	// "github.com/lib/pq"
+	"github.com/lib/pq"
+	"strings"
 
 	"github.com/cliffdoyle/tournament-service/internal/domain"
 	"github.com/google/uuid"
@@ -324,77 +325,125 @@ func (r *tournamentRepository) GetParticipantCount(ctx context.Context, id uuid.
 	return count, err
 }
 
-//--- NEW METHOD IMPLEMENTATION ---
+
+// type tournamentRepository struct { db *sql.DB }
+// func NewTournamentRepository(db *sql.DB) TournamentRepository { return &tournamentRepository{db: db} }
+
 func (r *tournamentRepository) GetByStatuses(ctx context.Context, statuses []domain.TournamentStatus, limit int, offset int) ([]*domain.Tournament, int, error) {
 	var tournaments []*domain.Tournament
 	var total int
 
+	// Build the main query
 	queryBuilder := strings.Builder{}
-	queryBuilder.WriteString(`SELECT id, name, description, game, format, status, max_participants, 
-                                     registration_deadline, start_time, end_time, created_by, 
-                                     created_at, updated_at, rules, prize_pool, custom_fields 
-                              FROM tournaments `)
+	queryBuilder.WriteString(`
+		SELECT id, name, description, game, format, status, max_participants, 
+		       registration_deadline, start_time, end_time, created_by, 
+		       created_at, updated_at, rules, prize_pool, custom_fields 
+		FROM tournaments 
+	`)
 
 	args := []interface{}{}
-	argId := 1
+	paramIndex := 1
 
 	if len(statuses) > 0 {
-		queryBuilder.WriteString("WHERE status = ANY($1) ")
+		queryBuilder.WriteString(fmt.Sprintf("WHERE status = ANY($%d) ", paramIndex))
 		statusStrings := make([]string, len(statuses))
 		for i, s := range statuses {
 			statusStrings[i] = string(s)
 		}
 		args = append(args, pq.Array(statusStrings))
-		argId++
+		paramIndex++
 	}
 
-	// Count total matching tournaments first
-	countQuery := "SELECT COUNT(*) FROM tournaments "
+	// Build and execute the count query
+	var countArgs []interface{}
+	countQueryBuilder := strings.Builder{}
+	countQueryBuilder.WriteString("SELECT COUNT(*) FROM tournaments ")
 	if len(statuses) > 0 {
-		countQuery += "WHERE status = ANY($1)" // Use the same $1 as above
-		err := r.db.QueryRowContext(ctx, countQuery, pq.Array(statusStrings)).Scan(&total)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to count tournaments by status: %w", err)
+		countQueryBuilder.WriteString("WHERE status = ANY($1)") // Use $1 for count query context
+		// Re-create statusStrings or ensure pq.Array can be reused if args construction is complex
+		statusStringsForCount := make([]string, len(statuses))
+		for i, s := range statuses {
+			statusStringsForCount[i] = string(s)
 		}
-	} else { // Count all if no status filter (though typically you'd want specific statuses)
-		err := r.db.QueryRowContext(ctx, countQuery).Scan(&total)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to count all tournaments: %w", err)
-		}
+		countArgs = append(countArgs, pq.Array(statusStringsForCount))
+	}
+	
+	err := r.db.QueryRowContext(ctx, countQueryBuilder.String(), countArgs...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count tournaments by status: %w", err)
 	}
 
-
-	queryBuilder.WriteString(fmt.Sprintf("ORDER BY start_time ASC, created_at DESC LIMIT $%d OFFSET $%d", argId, argId+1))
+	// Add ordering, limit, and offset to the main query
+	// COALESCE helps sort NULL start_time values consistently (e.g., at the end for ASC sort)
+	queryBuilder.WriteString(fmt.Sprintf("ORDER BY COALESCE(start_time, '9999-12-31') ASC, created_at DESC LIMIT $%d OFFSET $%d", paramIndex, paramIndex+1))
 	args = append(args, limit, offset)
 
+	// Execute the main query
 	rows, err := r.db.QueryContext(ctx, queryBuilder.String(), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to query tournaments by status: %w", err)
 	}
 	defer rows.Close()
 
+	// Iterate through results
 	for rows.Next() {
-		var t domain.Tournament
-		var prizePoolJSON, customFieldsJSON []byte // For JSONB scanning
-		// Handle nullable time fields
-		var regDeadline, startTime, endTime sql.NullTime 
+		var t domain.Tournament // Use your exact struct
+		var prizePoolJSON, customFieldsJSON []byte // For JSONB from DB
+
+		// sql.NullTime for fields in DB that can be NULL but are *time.Time in struct
+		var dbRegDeadline, dbStartTime, dbEndTime sql.NullTime 
 
 		err := rows.Scan(
 			&t.ID, &t.Name, &t.Description, &t.Game, &t.Format, &t.Status,
-			&t.MaxParticipants, ®Deadline, &startTime, &endTime,
-			&t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.Rules,
+			&t.MaxParticipants, 
+			&dbRegDeadline, // Scan into sql.NullTime
+			&dbStartTime,    // Scan into sql.NullTime
+			&dbEndTime,      // Scan into sql.NullTime
+			&t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.Rules, // These are not pointers in your struct
 			&prizePoolJSON, &customFieldsJSON,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan tournament row: %w", err)
 		}
 
-		if regDeadline.Valid { t.RegistrationDeadline = ®Deadline.Time }
-		if startTime.Valid { t.StartTime = &startTime.Time }
-		if endTime.Valid { t.EndTime = &endTime.Time }
+		// Assign to struct pointers if DB value was not NULL
+		if dbRegDeadline.Valid {
+			t.RegistrationDeadline = &dbRegDeadline.Time
+		} else {
+			t.RegistrationDeadline = nil
+		}
+		if dbStartTime.Valid {
+			t.StartTime = &dbStartTime.Time
+		} else {
+			t.StartTime = nil
+		}
+		if dbEndTime.Valid {
+			t.EndTime = &dbEndTime.Time
+		} else {
+			t.EndTime = nil
+		}
 
-		if len(prizePoolJSON) > 0 { json.Unmarshal(prizePoolJSON, &t.PrizePool) }
-		if len(customFieldsJSON) > 0 { json.Unmarshal(customFieldsJSON, &t.CustomFields) }
+		// Unmarshal JSONB fields
+		if len(prizePoolJSON) > 0 { 
+			if errUnmarshal := json.Unmarshal(prizePoolJSON, &t.PrizePool); errUnmarshal != nil {
+				// Log or handle error appropriately, e.g., return default empty map
+				// fmt.Printf("Warning: failed to unmarshal prize_pool for tournament %s: %v\n", t.ID, errUnmarshal)
+				t.PrizePool = make(map[string]interface{}) // Default to empty map on error
+			}
+		} else {
+			t.PrizePool = make(map[string]interface{}) // Default if NULL in DB
+		}
+
+		if len(customFieldsJSON) > 0 { 
+			if errUnmarshal := json.Unmarshal(customFieldsJSON, &t.CustomFields); errUnmarshal != nil {
+				// fmt.Printf("Warning: failed to unmarshal custom_fields for tournament %s: %v\n", t.ID, errUnmarshal)
+				t.CustomFields = make(map[string]interface{})
+			}
+		} else {
+			t.CustomFields = make(map[string]interface{})
+		}
+
 		tournaments = append(tournaments, &t)
 	}
 	if err = rows.Err(); err != nil {
