@@ -1,190 +1,251 @@
-[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/golang-migrate/migrate/ci.yaml?branch=master)](https://github.com/golang-migrate/migrate/actions/workflows/ci.yaml?query=branch%3Amaster)
-[![GoDoc](https://pkg.go.dev/badge/github.com/golang-migrate/migrate)](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)
-[![Coverage Status](https://img.shields.io/coveralls/github/golang-migrate/migrate/master.svg)](https://coveralls.io/github/golang-migrate/migrate?branch=master)
-[![packagecloud.io](https://img.shields.io/badge/deb-packagecloud.io-844fec.svg)](https://packagecloud.io/golang-migrate/migrate?filter=debs)
-[![Docker Pulls](https://img.shields.io/docker/pulls/migrate/migrate.svg)](https://hub.docker.com/r/migrate/migrate/)
-![Supported Go Versions](https://img.shields.io/badge/Go-1.19%2C%201.20-lightgrey.svg)
-[![GitHub Release](https://img.shields.io/github/release/golang-migrate/migrate.svg)](https://github.com/golang-migrate/migrate/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/golang-migrate/migrate/v4)](https://goreportcard.com/report/github.com/golang-migrate/migrate/v4)
+# Tournament Management Platform -GamerWorld Tournaments
 
-# migrate
+This project is a comprehensive platform for creating, managing, and displaying gaming tournaments in various formats, including Single Elimination, Double Elimination, and Round Robin. It features a Go backend for API and logic, and a Next.js (React) frontend for user interaction and bracket visualization.
 
-__Database migrations written in Go. Use as [CLI](#cli-usage) or import as [library](#use-in-your-go-project).__
+## Table of Contents
 
-* Migrate reads migrations from [sources](#migration-sources)
-   and applies them in correct order to a [database](#databases).
-* Drivers are "dumb", migrate glues everything together and makes sure the logic is bulletproof.
-   (Keeps the drivers lightweight, too.)
-* Database drivers don't assume things or try to correct user input. When in doubt, fail.
+1.  [Features](#features)
+2.  [Tech Stack](#tech-stack)
+3.  [Project Structure](#project-structure)
+4.  [Setup and Installation](#setup-and-installation)
+    *   [Backend (Go)](#backend-go)
+    *   [Frontend (Next.js)](#frontend-nextjs)
+    *   [Database (PostgreSQL)](#database-postgresql)
+5.  [Core Functionality](#core-functionality)
+    *   [Tournament Creation & Management](#tournament-creation--management)
+    *   [Participant Management](#participant-management)
+    *   [Bracket Generation](#bracket-generation)
+    *   [Score Updates](#score-updates)
+    *   [Bracket Visualization](#bracket-visualization)
+6.  [Key Backend Components/Logic](#key-backend-componentslogic)
+    *   [Domain Models](#domain-models)
+    *   [Repository Layer](#repository-layer)
+    *   [Service Layer](#service-layer)
+    *   [Bracket Generation Algorithms](#bracket-generation-algorithms)
+7.  [Key Frontend Components/Logic](#key-frontend-componentslogic)
+    *   [Tournament Detail Page (`/tournaments/[id]`)](#tournament-detail-page-tournamentsid)
+    *   [Bracket Rendering (`BracketRenderer.tsx`)](#bracket-rendering-bracketrenderertsx)
+    *   [Elimination Bracket (`DarkChallongeBracket.tsx`)](#elimination-bracket-darkchallongebrackettsx)
+    *   [Round Robin Table (`RoundRobinTable.tsx`)](#round-robin-table-roundrobintabletsx)
+    *   [Statistics Tables](#statistics-tables)
+8.  [API Endpoints (Overview)](#api-endpoints-overview)
+9.  [Future Enhancements / TODO](#future-enhancements--todo)
+10. [Contributing](#contributing)
+11. [License](#license)
 
-Forked from [mattes/migrate](https://github.com/mattes/migrate)
+## Features
 
-## Databases
+*   User Authentication (assumed, context: `useAuth`)
+*   Tournament Creation: Specify name, game, description, format, dates, etc.
+*   Multiple Tournament Formats:
+    *   Single Elimination
+    *   Double Elimination
+    *   Round Robin
+    *   Swiss (basic placeholder)
+*   Participant Management: Add participants to tournaments before bracket generation.
+*   Automated Bracket Generation: Creates match schedules based on selected format and participants.
+    *   Handles seeding and byes for elimination formats.
+    *   Uses circle method for Round Robin.
+*   Score Reporting:
+    *   Inline score editing for Round Robin matches.
+    *   Modal/Popover score editing for Elimination bracket matches.
+    *   Optimistic UI updates for a smoother user experience.
+*   Dynamic Bracket/Table Visualization:
+    *   Interactive SVG-based elimination brackets (`DarkChallongeBracket.tsx`).
+    *   Clear Round Robin standings and match lists (`RoundRobinTable.tsx`).
+    *   Participant statistics tables for elimination formats.
+*   Real-time (or near real-time after refresh) updates to brackets and standings upon score entry.
+*   Clear visual distinction for match status, winners, and different bracket sections (e.g., Losers Bracket).
 
-Database drivers run migrations. [Add a new database?](database/driver.go)
+## Tech Stack
 
-* [PostgreSQL](database/postgres)
-* [PGX v4](database/pgx)
-* [PGX v5](database/pgx/v5)
-* [Redshift](database/redshift)
-* [Ql](database/ql)
-* [Cassandra](database/cassandra)
-* [SQLite](database/sqlite)
-* [SQLite3](database/sqlite3) ([todo #165](https://github.com/mattes/migrate/issues/165))
-* [SQLCipher](database/sqlcipher)
-* [MySQL/ MariaDB](database/mysql)
-* [Neo4j](database/neo4j)
-* [MongoDB](database/mongodb)
-* [CrateDB](database/crate) ([todo #170](https://github.com/mattes/migrate/issues/170))
-* [Shell](database/shell) ([todo #171](https://github.com/mattes/migrate/issues/171))
-* [Google Cloud Spanner](database/spanner)
-* [CockroachDB](database/cockroachdb)
-* [YugabyteDB](database/yugabytedb)
-* [ClickHouse](database/clickhouse)
-* [Firebird](database/firebird)
-* [MS SQL Server](database/sqlserver)
+*   **Backend:** Go
+    *   Web Framework: Gin 
+    *   Database: PostgreSQL
+    *   ORM/DB Layer: `database/sql` 
+    *   UUIDs: `github.com/google/uuid`
+*   **Frontend:** Next.js (React)
+    *   State Management: React Hooks (`useState`, `useEffect`, `useMemo`, `useCallback`), Context API (`useAuth`)
+    *   Styling: Tailwind CSS (potentially with DaisyUI or similar component library for `btn`, `card`, etc.)
+    *   Routing: Next.js App Router
+    *   Icons: Heroicons (`@heroicons/react`)
+    *   API Client: Custom fetch-based client (`src/lib/api/tournament.ts`)
+*   **Database:** PostgreSQL 
 
-### Database URLs
+## Setup and Installation
 
-Database connection strings are specified via URLs. The URL format is driver dependent but generally has the form: `dbdriver://username:password@host:port/dbname?param1=true&param2=false`
+### Backend (Go)
 
-Any [reserved URL characters](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_reserved_characters) need to be escaped. Note, the `%` character also [needs to be escaped](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_the_percent_character)
+1.  **Prerequisites:** Go, PostgreSQL server.
+2.  **Clone the repository:** `git clone https://github.com/cliffdoyle/gamer_world.git`
+3.  **Navigate to backend directory:** `cd tournament-service`
+4.  **Database Setup:**
+    *   Create a PostgreSQL database.
+    *   Run database migrations to create necessary tables (`tournaments`, `participants`, `matches`). Ensure the `matches` table includes:
+        *   `bracket_type VARCHAR(20)`
+        *   `participant1_prereq_match_id UUID NULL`
+        *   `participant2_prereq_match_id UUID NULL`
+        *   `participant1_prereq_match_result_source VARCHAR(10) NULL`
+        *   `participant2_prereq_match_result_source VARCHAR(10) NULL`
+        *   And all other fields from `domain.Match`.
+5.  **Configuration:**
+    *   Set up environment variables or a config file for:
+        *   Database connection string (user, password, host, port, dbname)
+        *   JWT secret
+        *   Server port
+6.  **Install Dependencies:** `go mod tidy`
+7.  **Run the server:** `go run cmd/server/main.go` 
 
-Explicitly, the following characters need to be escaped:
-`!`, `#`, `$`, `%`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `/`, `:`, `;`, `=`, `?`, `@`, `[`, `]`
+### Frontend (Next.js)
 
-It's easiest to always run the URL parts of your DB connection URL (e.g. username, password, etc) through an URL encoder. See the example Python snippets below:
+1.  **Prerequisites:** Node.js, npm.
+2.  **Clone the repository:** `git clone https://github.com/cliffdoyle/gamer_world.git`
+3.  **Navigate to frontend directory:** `cd tournament-frontend`
+4.  **Install Dependencies:** `npm install` or `yarn install`
+    *   Ensure `@heroicons/react` and `tailwind-scrollbar` (if used) are installed.
+5.  **Configuration:**
+    *   Create a `.env.local` file in the root of `tournament-frontend`.
+    *   Add your backend API base URL:
+        ```env
+        NEXT_PUBLIC_API_BASE_URL=http://localhost:8082 # 
+        ```
+    *   `src/lib/api/config.ts` should use this environment variable.
+6.  **Run the development server:** `npm run dev` or `yarn dev`
+7.  Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-```bash
-$ python3 -c 'import urllib.parse; print(urllib.parse.quote(input("String to encode: "), ""))'
-String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
-FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
-$ python2 -c 'import urllib; print urllib.quote(raw_input("String to encode: "), "")'
-String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
-FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
-$
-```
+### Database (PostgreSQL)
 
-## Migration Sources
+*   Ensure your PostgreSQL server is running.
+*   Create the tournament database if it doesn't exist.
+*   Apply the schema migrations to create tables: `tournaments`, `participants`, `matches`.
+    *   **`matches` table requires special attention** to include all fields from the Go `domain.Match` struct, particularly the `bracket_type` and the four prerequisite fields for TBD resolution (`participant1_prereq_match_id`, `participant2_prereq_match_id`, `participant1_prereq_match_result_source`, `participant2_prereq_match_result_source`).
 
-Source drivers read migrations from local or remote sources. [Add a new source?](source/driver.go)
+## Core Functionality
 
-* [Filesystem](source/file) - read from filesystem
-* [io/fs](source/iofs) - read from a Go [io/fs](https://pkg.go.dev/io/fs#FS)
-* [Go-Bindata](source/go_bindata) - read from embedded binary data ([jteeuwen/go-bindata](https://github.com/jteeuwen/go-bindata))
-* [pkger](source/pkger) - read from embedded binary data ([markbates/pkger](https://github.com/markbates/pkger))
-* [GitHub](source/github) - read from remote GitHub repositories
-* [GitHub Enterprise](source/github_ee) - read from remote GitHub Enterprise repositories
-* [Bitbucket](source/bitbucket) - read from remote Bitbucket repositories
-* [Gitlab](source/gitlab) - read from remote Gitlab repositories
-* [AWS S3](source/aws_s3) - read from Amazon Web Services S3
-* [Google Cloud Storage](source/google_cloud_storage) - read from Google Cloud Platform Storage
+### Tournament Creation & Management
+*   Users can create new tournaments, specifying essential details.
+*   Tournament status (`DRAFT`, `REGISTRATION`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`) tracks its lifecycle.
 
-## CLI usage
+### Participant Management
+*   Participants can be added to tournaments during the `DRAFT` or `REGISTRATION` phase, before the bracket is generated and within registration deadlines.
+*   The system checks against `maxParticipants`.
 
-* Simple wrapper around this library.
-* Handles ctrl+c (SIGINT) gracefully.
-* No config search paths, no config files, no magic ENV var injections.
+### Bracket Generation
+*   Triggered manually via the UI by an authorized user.
+*   Requires at least 2 participants.
+*   The Go backend's `bracket` package contains distinct generators:
+    *   `SingleEliminationGenerator`: Uses seeding (`applyChallongeSeeding`) and handles byes. Populates prerequisite match fields for accurate "Winner of Mx" display.
+    *   `DoubleEliminationGenerator`:
+        *   Uses `generateWinnersBracketFromSingleElim` (which itself calls the core SE logic) for the Winners Bracket.
+        *   `generateLosersBracket` logic determines how losers drop and are paired with advancing LB players, setting prerequisite fields (including `_result_source` as "LOSER" or "WINNER").
+        *   `generateFinalMatches` creates 1 or 2 Grand Final matches with correct prerequisite links from WB and LB finals.
+    *   `RoundRobinGenerator`: Uses the circle method.
+    *   `SwissGenerator`: Basic placeholder structure.
+*   Once generated, participants can no longer be added/removed.
 
-__[CLI Documentation](cmd/migrate)__
+### Score Updates
+*   Managed through the `TournamentDetailPage` (`page.tsx`).
+*   **Round Robin:** Features inline editing directly on match cards via `RoundRobinTable.tsx`.
+*   **Elimination (SE/DE):** Uses a popover-style modal (`MatchScoreEditor.tsx`) triggered by clicking a match (or an edit icon) in the SVG bracket (`DarkChallongeBracket.tsx`).
+*   Uses optimistic UI updates for a responsive feel, then syncs with the backend.
+*   Backend `UpdateMatchScore` service correctly determines `winner_id` (or `nil` for RR draws) and `status` before saving and advancing participants in elimination formats.
 
-### Basic usage
+### Bracket Visualization
+*   `BracketRenderer.tsx` conditionally renders the appropriate display component based on tournament format.
+*   **`DarkChallongeBracket.tsx`:**
+    *   Renders interactive SVG brackets for Single and Double Elimination.
+    *   Dynamically calculates match positions and connector lines.
+    *   Displays "Winner of Mx" / "Loser of Mx" for TBD slots if backend provides prerequisite data (`participantX_prereq_match_id` and `participantX_prereq_match_result_source`).
+    *   Includes visual cues for editable matches.
+*   **`RoundRobinTable.tsx`:**
+    *   Displays a clear standings table (Rank, MP, W, L, D, Pts).
+    *   Lists matches grouped by round with scores.
+*   **`EliminationStatsTable.tsx`:**
+    *   Provides a statistics table (MP, W, L, Pts) for participants in SE/DE tournaments.
 
-```bash
-$ migrate -source file://path/to/migrations -database postgres://localhost:5432/database up 2
-```
+## Key Backend Components/Logic
 
-### Docker usage
+### Domain Models (`internal/domain`)
+*   `Tournament`, `Participant`, `Match` structs define the core data structures.
+*   `Match` struct includes crucial fields: `bracket_type`, `loser_next_match_id`, `participantX_prereq_match_id`, and `participantX_prereq_match_result_source`.
+*   Enums for `TournamentFormat`, `TournamentStatus`, `MatchStatus`, `BracketType`, `PrereqSourceType`.
 
-```bash
-$ docker run -v {{ migration dir }}:/migrations --network host migrate/migrate
-    -path=/migrations/ -database postgres://localhost:5432/database up 2
-```
+### Repository Layer (`internal/repository`)
+*   Handles all direct database interactions (CRUD operations) for `tournaments`, `participants`, and `matches` tables using `database/sql`.
+*   Must be updated to read/write the new prerequisite fields in the `matches` table.
 
-## Use in your Go project
+### Service Layer (`internal/service`)
+*   `tournamentService` orchestrates business logic.
+*   `CreateTournament`: Handles creation, setting initial status to `DRAFT` or `REGISTRATION`.
+*   `AddParticipant`: Adds a participant if rules allow.
+*   `GenerateBracket`: Calls the appropriate generator from the `bracket` package based on `tournament.Format`. Crucially updates `matches` and ideally the `tournament.status`.
+*   `UpdateMatchScore`: The refined version correctly determines `winner_id` based on scores for all formats (nil for RR draws), updates match status, saves the match, and then handles participant advancement in elimination brackets based on `next_match_id` and `loser_next_match_id`, ideally using prerequisite data for precise slotting.
 
-* API is stable and frozen for this release (v3 & v4).
-* Uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies.
-* To help prevent database corruptions, it supports graceful stops via `GracefulStop chan bool`.
-* Bring your own logger.
-* Uses `io.Reader` streams internally for low memory overhead.
-* Thread-safe and no goroutine leaks.
+### Bracket Generation Algorithms (`internal/bracket`)
+*   **`SingleEliminationGenerator`**: Core logic (`generateSingleEliminationInternal`) sets `NextMatchID` and `ParticipantXPrereqMatchID`/`Source` ("WINNER").
+*   **`DoubleEliminationGenerator`**:
+    *   `generateWinnersBracketFromSingleElim`: Calls the core SE logic.
+    *   `generateLosersBracket`: Complex logic to create LB structure. **This part is critical and must accurately set `LoserNextMatchID` on WB matches, `NextMatchID` on LB matches, and the full set of prerequisite fields (`ID` and `Source` as "WINNER" or "LOSER") for each slot in new LB matches.**
+    *   `generateFinalMatches`: Creates GF1 (and optional GF2) linking WB/LB finals and setting appropriate prerequisite data.
+*   Relies on helper functions for seeding (`applyChallongeSeeding`) and byes.
 
-__[Go Documentation](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)__
+## Key Frontend Components/Logic
 
-```go
-import (
-    "github.com/golang-migrate/migrate/v4"
-    _ "github.com/golang-migrate/migrate/v4/database/postgres"
-    _ "github.com/golang-migrate/migrate/v4/source/github"
-)
+### Tournament Detail Page (`/tournaments/[id]/page.tsx`)
+*   Fetches all data for a specific tournament (`tournament`, `participants`, `matches`).
+*   Manages UI state: loading, errors, modal visibility, inline editing state for RR.
+*   Handles user actions: adding participants, generating bracket, initiating score updates.
+*   Implements optimistic UI updates for score changes.
+*   Renders `EliminationStatsTable` or delegates bracket/table display to `BracketRenderer`.
+*   Controls the visibility and data for `MatchScoreEditor`.
 
-func main() {
-    m, err := migrate.New(
-        "github://mattes:personal-access-token@mattes/migrate_test",
-        "postgres://localhost:5432/database?sslmode=enable")
-    m.Steps(2)
-}
-```
+### Bracket Rendering (`BracketRenderer.tsx`)
+*   A simple conditional renderer that chooses between `DarkChallongeBracket.tsx` (for SE/DE) and `RoundRobinTable.tsx`.
+*   Passes down necessary props, including callbacks for editing and inline editing state for RR.
 
-Want to use an existing database client?
+### Elimination Bracket (`DarkChallongeBracket.tsx`)
+*   Renders SE/DE tournaments as an SVG.
+*   **Layout Algorithm:** Complex `useEffect` hook calculates X/Y positions for each match, grouping them by `ui_bracket_section` (WINNERS, LOSERS, GRAND_FINALS) to create distinct visual areas. Aims for compact, Challonge-like layout.
+*   **Connector Lines:** Draws SVG `<path>` elements between matches based on `next_match_id` and `loser_next_match_id`, targeting correct P1/P2 slots using prerequisite data if available.
+*   **TBD Labels:** Uses `participantX_prereq_match_id` and `participantX_prereq_match_result_source` (from API via props) to display "W of Mx" or "L of Mx".
+*   **Editing Cue:** Displays an SVG edit icon on matches; clicking the match group triggers `onMatchClick` handled by `page.tsx` to open the `MatchScoreEditor` (styled as a popover).
 
-```go
-import (
-    "database/sql"
-    _ "github.com/lib/pq"
-    "github.com/golang-migrate/migrate/v4"
-    "github.com/golang-migrate/migrate/v4/database/postgres"
-    _ "github.com/golang-migrate/migrate/v4/source/file"
-)
+### Round Robin Table (`RoundRobinTable.tsx`)
+*   Calculates and displays a sortable standings table (W, L, D, Pts).
+*   Lists matches grouped by round.
+*   **Inline Score Editing:** When a match is clicked (and `onMatchClick` is triggered, setting state in `page.tsx`), it displays input fields directly within the match card for score entry.
+*   Styled for dark theme readability.
 
-func main() {
-    db, err := sql.Open("postgres", "postgres://localhost:5432/database?sslmode=enable")
-    driver, err := postgres.WithInstance(db, &postgres.Config{})
-    m, err := migrate.NewWithDatabaseInstance(
-        "file:///migrations",
-        "postgres", driver)
-    m.Up() // or m.Step(2) if you want to explicitly set the number of migrations to run
-}
-```
+### Statistics Tables
+*   `EliminationStatsTable.tsx`: Displays participant stats (MP, W, L, Points) for SE/DE formats.
+*   `RoundRobinTable.tsx`: Includes an integrated standings table.
 
-## Getting started
+## API Endpoints (Overview)
 
-Go to [getting started](GETTING_STARTED.md)
+*   `GET /tournaments`: List all tournaments.
+*   `POST /tournaments`: Create a new tournament.
+*   `GET /tournaments/{id}`: Get details for a specific tournament.
+*   `PUT /tournaments/{id}`: Update tournament details (e.g., status).
+*   `GET /tournaments/{id}/participants`: List participants for a tournament.
+*   `POST /tournaments/{id}/participants`: Add a participant.
+*   `GET /tournaments/{id}/matches`: Get all matches for a tournament.
+*   `POST /tournaments/{id}/bracket`: Generate the bracket/matches.
+*   `PUT /tournaments/{id}/matches/{matchId}`: Update a match (scores, status, etc.).
 
-## Tutorials
+## Future Enhancements / TODO
 
-* [CockroachDB](database/cockroachdb/TUTORIAL.md)
-* [PostgreSQL](database/postgres/TUTORIAL.md)
+*   **Full Double Elimination Layout Perfection:** Ensure `DarkChallongeBracket.tsx` handles all DE scenarios and edge cases for match placement and connector lines with high fidelity. Debug any visual issues with LB/GF.
+*   **True Inline SVG Editing (Advanced):** If the popover-style editor for SE/DE isn't ideal, explore `<foreignObject>` or pure SVG text input simulation (complex).
+*   **Robust Swiss System Implementation:** Fully implement Swiss pairing logic in the backend and a corresponding frontend display.
+*   **User Roles & Permissions:** More granular control over who can create tournaments, add participants, report scores.
+*   **Real-time Updates:** Use WebSockets or similar for instant updates across all connected clients when scores change or brackets are updated.
+*   **Seeding Management:** UI for manual seeding or adjusting automated seeding.
+*   **Tie-breaker Rules:** Implement more complex tie-breaker rules for Round Robin standings (e.g., head-to-head results, score difference within matches).
+*   **Responsive Design Improvements:** Further fine-tune layouts for smaller screens.
+*   **Testing:** Comprehensive unit and integration tests for both backend and frontend.
+*   **Error Handling & User Feedback:** More detailed and user-friendly error messages. Loading indicators for all async actions.
+*   **Accessibility (a11y):** Ensure the bracket and tables are keyboard navigable and screen-reader friendly.
 
-(more tutorials to come)
+## License
 
-## Migration files
-
-Each migration has an up and down migration. [Why?](FAQ.md#why-two-separate-files-up-and-down-for-a-migration)
-
-```bash
-1481574547_create_users_table.up.sql
-1481574547_create_users_table.down.sql
-```
-
-[Best practices: How to write migrations.](MIGRATIONS.md)
-
-## Versions
-
-Version | Supported? | Import | Notes
---------|------------|--------|------
-**master** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | New features and bug fixes arrive here first |
-**v4** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | Used for stable releases |
-**v3** | :x: | `import "github.com/golang-migrate/migrate"` (with package manager) or `import "gopkg.in/golang-migrate/migrate.v3"` (not recommended) | **DO NOT USE** - No longer supported |
-
-## Development and Contributing
-
-Yes, please! [`Makefile`](Makefile) is your friend,
-read the [development guide](CONTRIBUTING.md).
-
-Also have a look at the [FAQ](FAQ.md).
-
----
-
-Looking for alternatives? [https://awesome-go.com/#database](https://awesome-go.com/#database).
+ MIT
