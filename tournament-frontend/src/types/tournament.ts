@@ -8,6 +8,7 @@ export interface TournamentResponse {
   description: string;
   game: string;
   format: TournamentFormat;
+   currentParticipants: number;
   status: TournamentStatus;
   maxParticipants: number;
   registrationDeadline: string | null;
@@ -78,4 +79,7 @@ export interface UserActivity { // If you're using `UserActivity as BackendUserA
   related_entity_type?: string | null;
   context_url?: string | null;
   date: string; // maps to createdAt
+    rank?: string;         // Optional if not always present
+  level?: number;        // Optional
+  avatarUrl?: string;   
 }
