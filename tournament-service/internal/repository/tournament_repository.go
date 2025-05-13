@@ -22,6 +22,7 @@ type TournamentRepository interface {
 	Update(ctx context.Context, tournament *domain.Tournament) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetParticipantCount(ctx context.Context, id uuid.UUID) (int, error)
+	GetByStatuses(ctx context.Context, statuses []domain.TournamentStatus, limit int, offset int) ([]*domain.Tournament, int, error)
 }
 
 // tournamentRepository implements TournamentRepository interface
