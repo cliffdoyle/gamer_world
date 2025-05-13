@@ -15,6 +15,8 @@ export interface User {
   // For example, if your API returns created_at, updated_at:
   // created_at?: string; // Or Date
   // updated_at?: string; // Or Date
+  rank?: string | null; // Optional rank field
+  level?: number; // Optional level field
 }
 
 export interface LoginRequest {
