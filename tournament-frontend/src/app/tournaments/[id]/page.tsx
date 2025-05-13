@@ -8,7 +8,6 @@ import { tournamentApi } from '@/lib/api/tournament';
 import { Tournament, Participant, Match, TournamentFormat } from '@/types/tournament';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import BracketRenderer from '@/components/tournament/BracketRenderer';
-import MatchScoreEditor from '@/components/tournament/MatchScoreEditor';
 import EliminationStatsTable from '@/components/tournament/EliminationStatsTable';
 import { ArrowLeftIcon, PlusIcon, BoltIcon, TableCellsIcon, ListBulletIcon } from '@heroicons/react/24/outline';
 
@@ -23,15 +22,14 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]); // This holds raw API matches
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [isAddingParticipant, setIsAddingParticipant] = useState(false);
   const [participantForm, setParticipantForm] = useState<AddParticipantFormData>({ name: '' });
-  const [isGenerating, setIsGenerating] = useState(false); // This state tracks if generation is IN PROGRESS
+  const [isGenerating, setIsGenerating] = useState(false);
   
-  const [editingMatchForModal, setEditingMatchForModal] = useState<Match | null>(null);
   const [inlineEditingMatchId, setInlineEditingMatchId] = useState<string | null>(null);
   const [inlineScores, setInlineScores] = useState<{ p1: string, p2: string }>({ p1: '', p2: '' });
   
@@ -45,7 +43,11 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
 
   useEffect(() => {
     if (tournament) {
-      setViewMode('bracket'); 
+      if (tournament.format === 'ROUND_ROBIN') {
+        setViewMode('list');
+      } else {
+        setViewMode('bracket'); 
+      }
     }
   }, [tournament]);
 
@@ -56,7 +58,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       const [tournamentData, participantsData, matchesData] = await Promise.all([
         tournamentApi.getTournament(token!, tournamentId),
         tournamentApi.getParticipants(token!, tournamentId),
-        tournamentApi.getMatches(token!, tournamentId)
+        tournamentApi.getMatches(token!, tournamentId) // Expecting matches with prereq IDs
       ]);
       setTournament(tournamentData);
       setParticipants(participantsData || []);
@@ -89,7 +91,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       await tournamentApi.addParticipant(token, tournament.id, { name: participantForm.name.trim() });
       setParticipantForm({ name: '' });
       setIsAddingParticipant(false); 
-      await fetchTournamentData(); 
+      await fetchTournamentData();
     } catch (err) {
       console.error("Add participant error:", err);
       setError(err instanceof Error ? err.message : 'Failed to add participant');
@@ -98,76 +100,75 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
 
   const handleGenerateBracket = async () => {
     setError(null);
-    // console.log("DEBUG: handleGenerateBracket called");
     if (!token || !tournament) { 
-        // console.log("DEBUG: handleGenerateBracket - no token or tournament");
         setError("Authentication or tournament data missing."); 
         return; 
     }
     if (participants.length < 2) { 
-        // console.log("DEBUG: handleGenerateBracket - not enough participants", participants.length);
         setError("At least 2 participants are needed to generate a bracket."); 
         return; 
     }
     if (matches.length > 0) { 
-        // console.log("DEBUG: handleGenerateBracket - matches already exist", matches.length);
         setError("Bracket has already been generated."); 
         return; 
     }
     if (tournament.status !== 'DRAFT' && tournament.status !== 'REGISTRATION') {
-        // console.log("DEBUG: handleGenerateBracket - invalid status", tournament.status);
         setError(`Tournament status (${tournament.status.toLowerCase()}) does not allow bracket generation.`); 
         return;
     }
 
-    // console.log("DEBUG: handleGenerateBracket - proceeding with API call");
-    setIsGenerating(true); // Set generating to true
+    setIsGenerating(true);
     try {
       await tournamentApi.generateBracket(token, tournament.id);
-      // console.log("DEBUG: handleGenerateBracket - API call successful, fetching data");
       await fetchTournamentData(); 
     } catch (err) {
       console.error("Generate bracket error:", err);
       setError(err instanceof Error ? err.message : 'Failed to generate bracket');
     } finally {
-      setIsGenerating(false); // Set generating to false
-      // console.log("DEBUG: handleGenerateBracket - finished");
+      setIsGenerating(false);
     }
   };
 
-  const submitScoreUpdate = async (matchToUpdate: Match, score1Str: string, score2Str: string) => {
-    if (!token || !tournament) return false;
+  const submitScoreUpdate = async (matchToUpdate: Match, score1Str: string, score2Str: string): Promise<Match | null> => {
+    if (!token || !tournament) return null;
     setError(null);
     const score1 = parseInt(score1Str);
     const score2 = parseInt(score2Str);
-    if (isNaN(score1) || isNaN(score2) || score1 < 0 || score2 < 0) { setError("Scores must be non-negative numbers."); return false; }
-    if (tournament.format !== 'ROUND_ROBIN' && score1 === score2) { setError("Ties are not allowed in this format."); return false; }
+
+    if (isNaN(score1) || isNaN(score2) || score1 < 0 || score2 < 0) { 
+      setError("Scores must be non-negative numbers."); 
+      return null; 
+    }
+    if (tournament.format !== 'ROUND_ROBIN' && score1 === score2) { 
+      setError("Ties are not allowed in this format."); 
+      return null; 
+    }
+
     try {
-      await tournamentApi.updateMatch(token, tournament.id, matchToUpdate.id, {
+      const updatedMatchData = await tournamentApi.updateMatch(token, tournament.id, matchToUpdate.id, {
         participant1Score: score1,
         participant2Score: score2,
       });
-      await fetchTournamentData();
-      return true;
+
+      setMatches(prevMatches =>
+        prevMatches.map(m => (m.id === updatedMatchData.id ? { ...m, ...updatedMatchData } : m))
+      );
+      return updatedMatchData;
     } catch (err) { 
         console.error("Submit Score Update Error:", err);
         setError(err instanceof Error ? err.message : 'Failed to update score'); 
-        return false; 
+        return null; 
     }
-  };
-
-  const handleModalScoreSubmit = async (matchId: string, p1: string, p2: string) => {
-    const match = matches.find(m => m.id === matchId);
-    if(match) { if(await submitScoreUpdate(match, p1, p2)) setEditingMatchForModal(null); } 
-    else { setError("Error: Could not find match to update via modal.");}
   };
 
   const handleInlineScoreSubmit = async () => {
     if(!inlineEditingMatchId) return;
     const match = matches.find(m => m.id === inlineEditingMatchId);
     if(match) { 
-      if(await submitScoreUpdate(match, inlineScores.p1, inlineScores.p2)) {
-        setInlineEditingMatchId(null); setInlineScores({p1:'', p2:''});
+      const updatedMatch = await submitScoreUpdate(match, inlineScores.p1, inlineScores.p2);
+      if(updatedMatch) {
+        setInlineEditingMatchId(null); 
+        setInlineScores({p1:'', p2:''});
       }
     } else { setError("Error: Could not find match to update inline.");}
   };
@@ -175,15 +176,16 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
   const handleMatchClickForEdit = (match: Match) => {
     if (!tournament) return;
     if (match.participant1_id && match.participant2_id && match.status !== 'COMPLETED') {
-        if (tournament.format === 'ROUND_ROBIN') {
-            setInlineEditingMatchId(match.id);
-            setInlineScores({ p1: match.score_participant1?.toString() || '0', p2: match.score_participant2?.toString() || '0'});
-            setEditingMatchForModal(null);
-        } else { 
-            setEditingMatchForModal(match);
-            setInlineEditingMatchId(null);
-        }
-    } else { /* console.log("Match not editable:", match); */ }
+        setInlineEditingMatchId(match.id);
+        setInlineScores({ 
+          p1: match.score_participant1?.toString() || '0', 
+          p2: match.score_participant2?.toString() || '0'
+        });
+    } else if (match.status !== 'COMPLETED' && (!match.participant1_id || !match.participant2_id) && (match.participant1_prereq_match_id || match.participant2_prereq_match_id)){
+        // This condition allows clicking on a TBD match if its slots *could* be fillable by user action (though not via direct score input yet)
+        // For now, let's prevent direct editing of TBD matches this way unless they are fully populated
+        // console.log("Match is TBD and not directly editable for score:", match);
+    }
   };
 
   const formatDateTime = (dateString: string | null): string => {
@@ -209,40 +211,23 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     return true;
   };
 
-  const getParticipantNameById = (id: string | null): string => {
-    if (!id) return 'TBD';
-    const p = participants.find(p => p.id === id);
-    return p ? p.participant_name : 'Unknown';
-  };
-
   const canAddParticipants = isEffectivelyRegistrationPhase(tournament) && matches.length === 0;
   
-  // **REVISED AND SIMPLIFIED canGenerateBracket**
   const canGenerateBracket = 
-    tournament !== null && // Ensure tournament data is loaded
+    tournament !== null &&
     participants.length >= 2 &&
     matches.length === 0 &&
     (tournament.status === 'DRAFT' || tournament.status === 'REGISTRATION') &&
-    !isGenerating; // Not currently in the process of generating
+    !isGenerating;
 
 
   if (isLoading) return <ProtectedRoute><div className="min-h-screen flex justify-center items-center bg-slate-900"><div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500"></div></div></ProtectedRoute>;
   if (!tournament && !isLoading) return <ProtectedRoute><div className="min-h-screen bg-slate-900 text-slate-300 p-8 text-center">Tournament (ID: {tournamentId}) not found or failed to load. {error && <span className="block mt-2 text-red-400">Error: {error}</span>}</div></ProtectedRoute>;
-  if (!tournament) return null; // Should be caught by above for TypeScript, but good guard
+  if (!tournament) return null;
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-slate-900 text-slate-300 selection:bg-blue-500 selection:text-white">
-      {editingMatchForModal && (
-        <MatchScoreEditor
-          match={editingMatchForModal}
-          participant1Name={getParticipantNameById(editingMatchForModal.participant1_id)}
-          participant2Name={getParticipantNameById(editingMatchForModal.participant2_id)}
-          onSubmit={handleModalScoreSubmit}
-          onCancel={() => setEditingMatchForModal(null)}
-          isSubmitting={false}
-        />
-      )}
         <div className="container mx-auto px-2 py-6 sm:px-4 md:px-6 lg:px-8 space-y-6 md:space-y-8">
           {/* Header Section */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-700 pb-6">
@@ -258,17 +243,16 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                     tournament.status === 'COMPLETED' ? 'bg-green-600/80 border-green-500' :
                     tournament.status === 'IN_PROGRESS' ? 'bg-yellow-600/80 border-yellow-500' :
                     tournament.status === 'REGISTRATION' ? 'bg-blue-600/80 border-blue-500' :
-                    'bg-purple-600/80 border-purple-500' // DRAFT or CANCELLED
+                    'bg-purple-600/80 border-purple-500'
                   }`}>{tournament.status}</span>
                   <span className="badge badge-lg bg-slate-700/80 text-slate-300 border-slate-600 backdrop-blur-sm">Game: {tournament.game}</span>
               </div>
             </div>
             <div className="flex-shrink-0 flex items-center gap-2 w-full sm:w-auto">
-              {/* Corrected disabled logic for Generate Bracket button */}
               <button
                 onClick={handleGenerateBracket}
                 className="btn btn-sm bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold w-full sm:w-auto shadow-lg disabled:opacity-60 disabled:saturate-50 disabled:cursor-not-allowed"
-                disabled={!canGenerateBracket} // Simply use !canGenerateBracket
+                disabled={!canGenerateBracket}
               >
                 <BoltIcon className="h-4 w-4 mr-1.5"/>
                 {isGenerating ? "Generating..." : (matches.length > 0 ? "Generated" : "Generate Bracket")}
@@ -297,7 +281,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                           <button 
                             className="btn btn-xs bg-blue-500 hover:bg-blue-600 border-blue-600 text-white shadow disabled:opacity-50 disabled:saturate-50 disabled:cursor-not-allowed" 
                             onClick={() => setIsAddingParticipant(!isAddingParticipant)}
-                            disabled={!canAddParticipants} // Uses canAddParticipants
+                            disabled={!canAddParticipants}
                           >
                             <PlusIcon className="h-3.5 w-3.5 mr-1"/> {isAddingParticipant ? 'Cancel Adding' : 'Add New'}
                           </button>
@@ -321,7 +305,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                       {!canAddParticipants && !isAddingParticipant && matches.length === 0 && (tournament.status === 'DRAFT' || tournament.status === 'REGISTRATION') && 
                         <p className="text-sky-400 text-xs mt-2 p-2 bg-sky-500/10 rounded-md">
                             {(participants.length < 2) ? "Needs at least 2 participants to generate." : 
-                             "Ready to generate bracket." // Simplified this message
+                             "Ready to generate bracket."
                             }
                         </p>
                       }
@@ -351,7 +335,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                   (matches.length > 0 || (tournament.format === 'ROUND_ROBIN' && participants.length >= 2 && tournament.status !== 'COMPLETED' && tournament.status !== 'CANCELLED')) ? ( 
                        <BracketRenderer
                           tournament={tournament}
-                          matches={matches}
+                          matches={matches} // Pass raw matches here
                           participants={participants}
                           onMatchClick={handleMatchClickForEdit}
                           inlineEditingMatchId={inlineEditingMatchId}
@@ -371,7 +355,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                               <button 
                                 onClick={handleGenerateBracket} 
                                 className="btn btn-md bg-blue-600 hover:bg-blue-700 text-white shadow-lg disabled:opacity-50 disabled:saturate-50 disabled:cursor-not-allowed"
-                                disabled={!canGenerateBracket} // Use the corrected canGenerateBracket here too
+                                disabled={!canGenerateBracket}
                               >
                                 <BoltIcon className="h-5 w-5 mr-2"/> Generate Bracket Now
                               </button>

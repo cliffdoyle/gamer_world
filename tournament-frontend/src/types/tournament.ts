@@ -64,4 +64,6 @@ export interface Match {
   isGrandFinal?: boolean;
   match_notes?: string;
   loser_next_match_id?: string | null;
+  participant1_prereq_match_id?: string | null;
+  participant2_prereq_match_id?: string | null;
 } 
