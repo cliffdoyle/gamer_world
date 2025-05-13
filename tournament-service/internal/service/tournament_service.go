@@ -18,6 +18,7 @@ type TournamentService interface {
 	CreateTournament(
 		ctx context.Context, request *domain.CreateTournamentRequest, creatorID uuid.UUID,
 	) (*domain.Tournament, error)
+	  ListActiveTournaments(ctx context.Context, page, pageSize int) ([]*domain.Tournament, int, error)
 	GetTournament(ctx context.Context, id uuid.UUID) (*domain.TournamentResponse, error)
 	ListTournaments(
 		ctx context.Context, filters map[string]interface{}, page, pageSize int,
