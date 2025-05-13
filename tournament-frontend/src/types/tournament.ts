@@ -2,7 +2,7 @@ export type TournamentFormat = 'SINGLE_ELIMINATION' | 'DOUBLE_ELIMINATION' | 'RO
 export type TournamentStatus = 'DRAFT' | 'REGISTRATION' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type BracketType = 'WINNERS' | 'LOSERS' | 'GRAND_FINALS' | null;
 
-export interface Tournament {
+export interface TournamentResponse {
   id: string;
   name: string;
   description: string;
@@ -67,3 +67,15 @@ export interface Match {
   participant1_prereq_match_id?: string | null;
   participant2_prereq_match_id?: string | null;
 } 
+
+// Also add UserActivity here if you need it and it's not defined yet
+export interface UserActivity { // If you're using `UserActivity as BackendUserActivity`
+  id: string;
+  user_id?: string; // Add user_id if your backend sends it
+  type: string;
+  detail: string;
+  related_entity_id?: string | null;
+  related_entity_type?: string | null;
+  context_url?: string | null;
+  date: string; // maps to createdAt
+}
