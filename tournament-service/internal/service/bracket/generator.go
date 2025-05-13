@@ -131,6 +131,8 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 			participantsWithMatches = append(participantsWithMatches, seededParticipants[i])
 		}
 	}
+
+	// Round 1: No prerequisites for initial matches with direct participants
 	// match1Participants := make([]*domain.Participant, 0, len(participantsWithMatches))
 	// Create matches for those who don't have byes
 	for i := 0; i < len(participantsWithMatches); i += 2 {
@@ -197,6 +199,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 			m.Participant1ID = &v.ID
 		case *domain.Match:
 			v.NextMatchID = &m.ID
+			m.Participant1PrereqMatchID=&v.ID
 		}
 
 		// getting player 2 now
@@ -206,6 +209,7 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 				m.Participant2ID = &v.ID
 			case *domain.Match:
 				v.NextMatchID = &m.ID
+				m.Participant1PrereqMatchID=&v.ID
 			}
 		}
 		roundMatches[2] = append(roundMatches[2], m)
@@ -237,10 +241,13 @@ func (g *SingleEliminationGenerator) generateSingleElimination(ctx context.Conte
 			// set forward links in previous matches
 			if i < len(prevRoundMatches) {
 				prevRoundMatches[i].NextMatchID = &match.ID
+				match.Participant1PrereqMatchID=&prevRoundMatches[i].ID
 			}
 
 			if i+1 < len(prevRoundMatches) {
 				prevRoundMatches[i+1].NextMatchID = &match.ID
+				prevRoundMatches[i+1].NextMatchID = &match.ID
+				match.Participant2PrereqMatchID=&prevRoundMatches[i+1].ID
 			}
 
 			currentRound = append(currentRound, match)
@@ -565,6 +572,7 @@ func (g *DoubleEliminationGenerator) generateWinnersBracketFromSingleElim(
                     m.Participant1ID = &v.ID
                 case *domain.Match:
                     v.NextMatchID = &m.ID
+					m.Participant1PrereqMatchID = &v.ID
                 }
             }
 
@@ -574,6 +582,7 @@ func (g *DoubleEliminationGenerator) generateWinnersBracketFromSingleElim(
                     m.Participant2ID = &v.ID
                 case *domain.Match:
                     v.NextMatchID = &m.ID
+					m.Participant2PrereqMatchID = &v.ID
                 }
             }
             roundMatchesRoster[2] = append(roundMatchesRoster[2], m)
@@ -606,11 +615,15 @@ func (g *DoubleEliminationGenerator) generateWinnersBracketFromSingleElim(
 			}
 
 			if i < len(prevRoundMatches) {
-				prevRoundMatches[i].NextMatchID = &match.ID
+				prevMatch1 := prevRoundMatches[i]
+                prevMatch1.NextMatchID = &match.ID
+                match.Participant1PrereqMatchID = &prevMatch1.ID
 			}
 
 			if i+1 < len(prevRoundMatches) {
-				prevRoundMatches[i+1].NextMatchID = &match.ID
+				prevMatch2 := prevRoundMatches[i+1]
+                prevMatch2.NextMatchID = &match.ID
+                match.Participant2PrereqMatchID = &prevMatch2.ID 
 			}
 
 			currentRound = append(currentRound, match)
