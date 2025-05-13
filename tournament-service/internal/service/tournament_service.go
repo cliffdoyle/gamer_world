@@ -206,6 +206,29 @@ func (s *tournamentService) ListTournaments(
 	return responses, total, nil
 }
 
+func (s *tournamentService) ListActiveTournaments(ctx context.Context, page, pageSize int) ([]*domain.Tournament, int, error) {
+	if page < 1 { page = 1 }
+	if pageSize < 1 { pageSize = 10 } // Default page size
+    if pageSize > 100 { pageSize = 100 } // Max page size
+
+	offset := (page - 1) * pageSize
+	
+	// Define what statuses are considered "active" for the dashboard
+	activeStatuses := []domain.TournamentStatus{
+		domain.Registration, // Assuming you defined this in domain/tournament.go
+		domain.InProgress,   // Assuming you defined this
+	}
+
+	tournaments, total, err := s.tournamentRepo.GetByStatuses(ctx, activeStatuses, pageSize, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list active tournaments: %w", err)
+	}
+
+	// Note: Your existing TournamentResponse in main.go wraps this in a paginated structure.
+	// This service method just returns the raw data and total. The handler will format.
+	return tournaments, total, nil
+}
+
 // UpdateTournament updates an existing tournament
 func (s *tournamentService) UpdateTournament(
 	ctx context.Context, id uuid.UUID, request *domain.UpdateTournamentRequest,
