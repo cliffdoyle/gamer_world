@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv" // Added for parsing pagination query parameters
 	"syscall"
 	"time"
 
@@ -57,7 +58,7 @@ func main() {
 
 	// Add CORS middleware
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000"}
+	config.AllowOrigins = []string{"http://localhost:3000"} // Adjust as per your frontend URL
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
 	config.AllowCredentials = true
@@ -72,13 +73,27 @@ func main() {
 	matchRepo := repository.NewMatchRepository(db)
 	messageRepo := repository.NewMessageRepository(db)
 	bracketGen := bracket.NewSingleEliminationGenerator()
+	
+	// Initialize UserActivity repository and service
+	activityRepo := repository.NewUserActivityRepository(db)
+	// UserActivityService constructor requires tournamentRepo to enrich activity descriptions if needed
+	userActivityService := service.NewUserActivityService(activityRepo, tournamentRepo)
 
+	// Initialize TournamentService
+	// NOTE: The provided tournamentService.go's NewTournamentService constructor signature
+	// does not include userActivityService. The line `userActivityService, // Pass UserActivityService to TournamentService`
+	// from your original main.go snippet would cause a compile error based on the `service.go` you provided.
+	// If tournament actions (e.g., CreateTournament, RegisterParticipant) are meant to log activities
+	// using userActivityService, you will need to modify the TournamentService struct definition
+	// and its NewTournamentService constructor in `internal/service/service.go` to accept and store userActivityService.
+	// For now, userActivityService is used by its dedicated dashboard endpoints.
 	tournamentService := service.NewTournamentService(
 		tournamentRepo,
 		participantRepo,
 		matchRepo,
 		messageRepo,
 		bracketGen,
+		// userActivityService, // Removed to match the NewTournamentService signature in your provided service.go
 	)
 
 	// Health check
@@ -86,11 +101,18 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Public routes
+	// Public routes (existing ones)
 	router.GET("/tournaments", func(c *gin.Context) {
-		filters := make(map[string]interface{})
-		page := 1
-		pageSize := 10
+		filters := make(map[string]interface{}) // Simplified for brevity, you might parse filters from query
+		pageQuery := c.DefaultQuery("page", "1")
+		pageSizeQuery := c.DefaultQuery("pageSize", "10")
+
+		page, _ := strconv.Atoi(pageQuery)
+		pageSize, _ := strconv.Atoi(pageSizeQuery)
+		if page < 1 { page = 1}
+		if pageSize < 1 { pageSize = 10}
+
+
 		tournaments, total, err := tournamentService.ListTournaments(c.Request.Context(), filters, page, pageSize)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -100,7 +122,7 @@ func main() {
 			"tournaments": tournaments,
 			"total":       total,
 			"page":        page,
-			"page_size":   pageSize,
+			"pageSize":   pageSize,
 		})
 	})
 
@@ -113,7 +135,6 @@ func main() {
 
 		tournament, err := tournamentService.GetTournament(c.Request.Context(), id)
 		if err != nil {
-			// Check if it's a not found error
 			if _, ok := err.(*service.ErrTournamentNotFound); ok {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
 				return
@@ -121,78 +142,58 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
 		c.JSON(http.StatusOK, tournament)
 	})
 
-	// Add participants route
 	router.GET("/tournaments/:tournamentId/participants", func(c *gin.Context) {
 		id, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
 		}
-
-		// First check if tournament exists
 		_, err = tournamentService.GetTournament(c.Request.Context(), id)
 		if err != nil {
 			if _, ok := err.(*service.ErrTournamentNotFound); ok {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
+				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		// Get participants
 		participants, err := tournamentService.GetParticipants(c.Request.Context(), id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		// Even if there are no participants, return an empty array instead of null
 		if participants == nil {
 			participants = []*domain.ParticipantResponse{}
 		}
-
 		c.JSON(http.StatusOK, participants)
 	})
 
-	// Add participant registration endpoint
-	router.POST("/tournaments/:tournamentId/participants", func(c *gin.Context) {
+    router.POST("/tournaments/:tournamentId/participants", func(c *gin.Context) {
 		tournamentID, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
 		}
-
 		var req struct {
 			ParticipantName string `json:"participant_name" binding:"required"`
-			Seed            *int   `json:"seed,omitempty"` // Make seed optional
+			Seed            *int   `json:"seed,omitempty"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		// Create participant request
-		participantReq := &domain.ParticipantRequest{
-			ParticipantName: req.ParticipantName,
-			Seed:            req.Seed, // Pass optional seed
-		}
-
-		// Get user info from token if available
+		participantReq := &domain.ParticipantRequest{ ParticipantName: req.ParticipantName, Seed: req.Seed}
 		token := c.GetHeader("Authorization")
-		if token != "" {
-			token = token[7:] // Remove "Bearer " prefix
+		if token != "" && len(token) > 7 {
+			token = token[7:]
 			user, err := userService.ValidateToken(token)
 			if err == nil {
-				userID := user.GetUserUUID()
-				participantReq.UserID = &userID
+				userID := user.GetUserUUID(); participantReq.UserID = &userID
 			}
 		}
-
 		participant, err := tournamentService.RegisterParticipant(c.Request.Context(), tournamentID, participantReq)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -201,117 +202,183 @@ func main() {
 		c.JSON(http.StatusCreated, participant)
 	})
 
-	// Add matches endpoint
 	router.GET("/tournaments/:tournamentId/matches", func(c *gin.Context) {
 		id, err := uuid.Parse(c.Param("tournamentId"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
 		}
-
 		matches, err := tournamentService.GetMatches(c.Request.Context(), id)
 		if err != nil {
 			if _, ok := err.(*service.ErrTournamentNotFound); ok {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
+				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		// Even if there are no matches, return an empty array instead of null
 		if matches == nil {
 			matches = []*domain.MatchResponse{}
 		}
-
 		c.JSON(http.StatusOK, matches)
 	})
+    
+    router.PUT("/tournaments/:tournamentId/participants/:participantId", func(c *gin.Context) {
+        tournamentID, err := uuid.Parse(c.Param("tournamentId")); if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"}); return }
+        participantID, err := uuid.Parse(c.Param("participantId")); if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid participant ID"}); return }
+        var req struct { ParticipantName string `json:"participant_name" binding:"required"`}; if err := c.ShouldBindJSON(&req); err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
+        updateReq := &domain.ParticipantRequest{ParticipantName: req.ParticipantName}
+        participant, err := tournamentService.UpdateParticipant(c.Request.Context(), tournamentID, participantID, updateReq)
+        if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
+        c.JSON(http.StatusOK, participant)
+    })
 
-	// Add participant update endpoint
-	router.PUT("/tournaments/:tournamentId/participants/:participantId", func(c *gin.Context) {
-		tournamentID, err := uuid.Parse(c.Param("tournamentId"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
-			return
-		}
-
-		participantID, err := uuid.Parse(c.Param("participantId"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid participant ID"})
-			return
-		}
-
-		var req struct {
-			ParticipantName string `json:"participant_name" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Create update request
-		updateReq := &domain.ParticipantRequest{
-			ParticipantName: req.ParticipantName,
-		}
-
-		participant, err := tournamentService.UpdateParticipant(c.Request.Context(), tournamentID, participantID, updateReq)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, participant)
-	})
-
-	// Add messages endpoint
 	router.GET("/tournaments/:tournamentId/messages", func(c *gin.Context) {
-		id, err := uuid.Parse(c.Param("tournamentId"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
-			return
-		}
-
-		limit := 50
-		offset := 0
+		id, err := uuid.Parse(c.Param("tournamentId")); if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"}); return }
+		limit := 50; offset := 0 // Add query param parsing for these if needed
 		messages, err := tournamentService.GetMessages(c.Request.Context(), id, limit, offset)
 		if err != nil {
-			if _, ok := err.(*service.ErrTournamentNotFound); ok {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found", "id": id.String()})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+			if _, ok := err.(*service.ErrTournamentNotFound); ok {c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"});return}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return
 		}
-
-		// Even if there are no messages, return an empty array instead of null
-		if messages == nil {
-			messages = []*domain.MessageResponse{}
-		}
-
+		if messages == nil { messages = []*domain.MessageResponse{} }
 		c.JSON(http.StatusOK, messages)
 	})
 
+
 	// Protected routes
 	protected := router.Group("")
-	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware()) // Assuming your middleware sets "userID" in the context
 	{
-		// Tournament management
+		// === NEW DASHBOARD ENDPOINTS ===
+
+		// GET /dashboard/active-tournaments
+		// Retrieves a paginated list of active tournaments for the dashboard
+		protected.GET("/dashboard/active-tournaments", func(c *gin.Context) {
+			pageQuery := c.DefaultQuery("page", "1")
+			pageSizeQuery := c.DefaultQuery("pageSize", "3") // Show 3 active tournaments on dashboard by default
+
+			page, err := strconv.Atoi(pageQuery)
+			if err != nil || page < 1 {
+				page = 1
+			}
+
+			pageSize, err := strconv.Atoi(pageSizeQuery)
+			if err != nil || pageSize < 1 {
+				pageSize = 3 
+			}
+			if pageSize > 10 { // Max 10 active tournaments for dashboard view
+				pageSize = 10
+			}
+
+			tournaments, total, err := tournamentService.ListActiveTournaments(c.Request.Context(), page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list active tournaments: " + err.Error()})
+				return
+			}
+
+			// Convert base domain.Tournament to domain.TournamentResponse to include participant counts,
+			// matching what the general /tournaments list might return.
+			tournamentResponses := make([]*domain.TournamentResponse, 0, len(tournaments))
+			for _, t := range tournaments {
+				participantCount, countErr := tournamentRepo.GetParticipantCount(c.Request.Context(), t.ID)
+				if countErr != nil {
+					log.Printf("Warning: Error fetching participant count for tournament %s on dashboard: %v", t.ID, countErr)
+					// Continue, participantCount will be 0. This is acceptable for a dashboard display.
+				}
+				tournamentResponses = append(tournamentResponses, &domain.TournamentResponse{
+					ID:                   t.ID,
+					Name:                 t.Name,
+					Description:          t.Description,
+					Game:                 t.Game,
+					Format:               t.Format,
+					Status:               t.Status, // Frontend might need to map this to display strings like "Registrations Open"
+					MaxParticipants:      t.MaxParticipants,
+					CurrentParticipants:  participantCount,
+					RegistrationDeadline: t.RegistrationDeadline,
+					StartTime:            t.StartTime,
+					EndTime:              t.EndTime,
+					CreatedAt:            t.CreatedAt,
+					Rules:                t.Rules,
+					PrizePool:            t.PrizePool, // This is json.RawMessage, frontend handles display
+					CustomFields:         t.CustomFields,
+				})
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"tournaments": tournamentResponses,
+				"total":       total,
+				"page":        page,
+				"pageSize":    pageSize,
+			})
+		})
+
+		// GET /dashboard/activities
+		// Retrieves a paginated list of recent activities for the authenticated user.
+		protected.GET("/dashboard/activities", func(c *gin.Context) {
+			userIDValue, exists := c.Get("userID") // Assuming AuthMiddleware sets "userID"
+			if !exists {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found in context. Authentication required."})
+				return
+			}
+			userID, ok := userIDValue.(uuid.UUID)
+			if !ok {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "User ID in context is of an invalid type."})
+				return
+			}
+
+			pageQuery := c.DefaultQuery("page", "1")
+			pageSizeQuery := c.DefaultQuery("pageSize", "4") // Show 4 recent activities on dashboard by default
+
+			page, err := strconv.Atoi(pageQuery)
+			if err != nil || page < 1 {
+				page = 1
+			}
+
+			pageSize, err := strconv.Atoi(pageSizeQuery)
+			if err != nil || pageSize < 1 {
+				pageSize = 4
+			}
+			if pageSize > 10 { // Max 10 activities for dashboard view
+				pageSize = 10
+			}
+
+			activities, total, err := userActivityService.GetUserActivities(c.Request.Context(), userID, page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user activities: " + err.Error()})
+				return
+			}
+			
+			// domain.UserActivity fields (id, user_id, type, detail, date, etc.) should map to frontend needs.
+
+			c.JSON(http.StatusOK, gin.H{
+				"activities": activities,
+				"total":      total,
+				"page":       page,
+				"pageSize":   pageSize,
+			})
+		})
+
+		// === END OF NEW DASHBOARD ENDPOINTS ===
+
+
+		// Existing protected tournament management routes
 		protected.POST("/tournaments", func(c *gin.Context) {
 			var req domain.CreateTournamentRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
+			token := c.GetHeader("Authorization")
+			if len(token) < 8 {c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token format"}); return}
+			token = token[7:] 
 
-			// Validate user with user service
-			token := c.GetHeader("Authorization")[7:] // Remove "Bearer " prefix
 			user, err := userService.ValidateToken(token)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user token"})
 				return
 			}
-
 			creatorID := user.GetUserUUID()
-
 			tournament, err := tournamentService.CreateTournament(c.Request.Context(), &req, creatorID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -326,13 +393,11 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
 			}
-
 			var req domain.UpdateTournamentRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-
 			tournament, err := tournamentService.UpdateTournament(c.Request.Context(), id, &req)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -347,7 +412,6 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
 			}
-
 			if err := tournamentService.DeleteTournament(c.Request.Context(), id); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -355,14 +419,12 @@ func main() {
 			c.Status(http.StatusNoContent)
 		})
 
-		// Tournament status management
 		protected.PUT("/tournaments/:tournamentId/status", func(c *gin.Context) {
 			id, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
 			}
-
 			var req struct {
 				Status domain.TournamentStatus `json:"status"`
 			}
@@ -370,12 +432,10 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-
 			if err := tournamentService.UpdateTournamentStatus(c.Request.Context(), id, req.Status); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-
 			tournament, err := tournamentService.GetTournament(c.Request.Context(), id)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -384,23 +444,17 @@ func main() {
 			c.JSON(http.StatusOK, tournament)
 		})
 
-		// Add bracket generation endpoint
 		protected.POST("/tournaments/:tournamentId/bracket", func(c *gin.Context) {
 			id, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
 			}
-
-			// Clear any existing matches first
 			log.Printf("Clearing existing matches for tournament %s", id)
 			err = tournamentService.DeleteMatches(c.Request.Context(), id)
 			if err != nil {
 				log.Printf("Error clearing matches: %v", err)
-				// Continue anyway, the tournament might not have any matches yet
 			}
-
-			// Generate bracket
 			log.Printf("Generating bracket for tournament %s", id)
 			err = tournamentService.GenerateBracket(c.Request.Context(), id)
 			if err != nil {
@@ -408,16 +462,11 @@ func main() {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate bracket: %v", err)})
 				return
 			}
-
-			// Always update tournament status to IN_PROGRESS
 			log.Printf("Updating tournament %s status to IN_PROGRESS", id)
 			err = tournamentService.UpdateTournamentStatus(c.Request.Context(), id, domain.InProgress)
 			if err != nil {
 				log.Printf("Warning: Failed to update tournament status: %v", err)
-				// Continue anyway, don't fail the request
 			}
-
-			// Fetch and return the generated matches
 			log.Printf("Fetching matches for tournament %s", id)
 			matches, err := tournamentService.GetMatches(c.Request.Context(), id)
 			if err != nil {
@@ -425,88 +474,70 @@ func main() {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch generated matches: %v", err)})
 				return
 			}
-
 			c.JSON(http.StatusCreated, matches)
 		})
 
-		// Add match score update endpoint
 		protected.PUT("/tournaments/:tournamentId/matches/:matchId", func(c *gin.Context) {
 			tournamentID, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
 			}
-
 			matchID, err := uuid.Parse(c.Param("matchId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid match ID"})
 				return
 			}
-
 			var req domain.ScoreUpdateRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-
-			// Get user info from token
-			token := c.GetHeader("Authorization")[7:] // Remove "Bearer " prefix
+			token := c.GetHeader("Authorization")
+			if len(token) < 8 {c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token format"}); return}
+			token = token[7:]
 			user, err := userService.ValidateToken(token)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user token"})
 				return
 			}
-
 			userID := user.GetUserUUID()
-
-			// Pass tournamentID to validate the match belongs to the correct tournament
 			err = tournamentService.UpdateMatchScore(c.Request.Context(), tournamentID, matchID, userID, &req)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-
-			// Get updated match data
-			matches, err := tournamentService.GetMatches(c.Request.Context(), tournamentID)
+			matches, err := tournamentService.GetMatches(c.Request.Context(), tournamentID) // Re-fetch all matches for simplicity
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get updated match data"})
 				return
 			}
-
-			// Find the updated match
 			var updatedMatch *domain.MatchResponse
 			for _, m := range matches {
-				if m.ID == matchID {
-					updatedMatch = m
-					break
-				}
+				if m.ID == matchID { updatedMatch = m; break }
 			}
-
-			c.JSON(http.StatusOK, updatedMatch)
+			c.JSON(http.StatusOK, updatedMatch) // Return only the updated match or all matches if preferred
 		})
 
-		// Message management
 		protected.POST("/tournaments/:tournamentId/messages", func(c *gin.Context) {
 			tournamentID, err := uuid.Parse(c.Param("tournamentId"))
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 				return
 			}
-
 			var req domain.MessageRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-
-			// Get user info from token
-			token := c.GetHeader("Authorization")[7:] // Remove "Bearer " prefix
+			token := c.GetHeader("Authorization")
+			if len(token) < 8 {c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token format"}); return}
+			token = token[7:]
 			user, err := userService.ValidateToken(token)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user token"})
 				return
 			}
-
 			userID := user.GetUserUUID()
 			message, err := tournamentService.SendMessage(c.Request.Context(), tournamentID, userID, &req)
 			if err != nil {
@@ -523,7 +554,6 @@ func main() {
 		Handler: router,
 	}
 
-	// Graceful shutdown
 	go func() {
 		log.Printf("Server starting on port %s", serverPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -531,7 +561,6 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
