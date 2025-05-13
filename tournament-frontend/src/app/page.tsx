@@ -28,10 +28,10 @@ export default function HomePage() {
           </Link>
           <nav className="hidden md:flex items-center space-x-6">
             <Link href="/features" className="text-gray-400 hover:text-white text-sm transition-colors">Features</Link>
-            <Link href="/capabilities" className="text-gray-400 hover:text-white text-sm transition-colors">Capabilities</Link>
+           {/* <Link href="/capabilities" className="text-gray-400 hover:text-white text-sm transition-colors">Capabilities</Link>
             <Link href="/enterprise" className="text-gray-400 hover:text-white text-sm transition-colors">Enterprise</Link>
             <Link href="/resources" className="text-gray-400 hover:text-white text-sm transition-colors">Resources</Link>
-            <Link href="/company" className="text-gray-400 hover:text-white text-sm transition-colors">Company</Link>
+            <Link href="/company" className="text-gray-400 hover:text-white text-sm transition-colors">Company</Link> */}
           </nav>
           <div>
             <Link 
@@ -206,7 +206,7 @@ export default function HomePage() {
               </div>
             </div>
             
-            <div className="md:col-span-1">
+            {/* <div className="md:col-span-1">
               <h3 className="text-sm font-semibold text-white mb-4">Product</h3>
               <ul className="space-y-2">
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Gamer World Editor</Link></li>
@@ -215,9 +215,9 @@ export default function HomePage() {
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Changelog</Link></li>
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Enterprise</Link></li>
               </ul>
-            </div>
+            </div> */}
             
-            <div className="md:col-span-1">
+            {/* <div className="md:col-span-1">
               <h3 className="text-sm font-semibold text-white mb-4">Capabilities</h3>
               <ul className="space-y-2">
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Overview</Link></li>
@@ -226,9 +226,9 @@ export default function HomePage() {
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Tournaments</Link></li>
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Leaderboards</Link></li>
               </ul>
-            </div>
+            </div> */}
             
-            <div className="md:col-span-1">
+            {/* <div className="md:col-span-1">
               <h3 className="text-sm font-semibold text-white mb-4">Company</h3>
               <ul className="space-y-2">
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">About Us</Link></li>
@@ -237,9 +237,9 @@ export default function HomePage() {
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Contact</Link></li>
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Sponsors</Link></li>
               </ul>
-            </div>
+            </div> */}
             
-            <div className="md:col-span-1">
+            {/* <div className="md:col-span-1">
               <h3 className="text-sm font-semibold text-white mb-4">Resources</h3>
               <ul className="space-y-2">
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Docs</Link></li>
@@ -248,7 +248,7 @@ export default function HomePage() {
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Support</Link></li>
                 <li><Link href="#" className="text-xs text-gray-400 hover:text-white">Events</Link></li>
               </ul>
-            </div>
+            </div> */}
           </div>
         </div>
       </footer>
