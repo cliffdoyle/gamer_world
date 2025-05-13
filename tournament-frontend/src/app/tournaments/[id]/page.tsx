@@ -8,7 +8,6 @@ import { tournamentApi } from '@/lib/api/tournament';
 import { Tournament, Participant, Match, TournamentFormat } from '@/types/tournament';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import BracketRenderer from '@/components/tournament/BracketRenderer';
-// MatchScoreEditor is no longer needed
 import EliminationStatsTable from '@/components/tournament/EliminationStatsTable';
 import { ArrowLeftIcon, PlusIcon, BoltIcon, TableCellsIcon, ListBulletIcon } from '@heroicons/react/24/outline';
 
@@ -23,7 +22,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]); // This holds raw API matches
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,11 +30,10 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
   const [participantForm, setParticipantForm] = useState<AddParticipantFormData>({ name: '' });
   const [isGenerating, setIsGenerating] = useState(false);
   
-  // State for inline editing (used by both RoundRobinTable and DarkChallongeBracket)
   const [inlineEditingMatchId, setInlineEditingMatchId] = useState<string | null>(null);
   const [inlineScores, setInlineScores] = useState<{ p1: string, p2: string }>({ p1: '', p2: '' });
   
-  const [viewMode, setViewMode] = useState<'bracket' | 'list'>('bracket'); // Retained for SE/DE list view
+  const [viewMode, setViewMode] = useState<'bracket' | 'list'>('bracket');
 
   useEffect(() => {
     if (token && tournamentId) {
@@ -45,9 +43,8 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
 
   useEffect(() => {
     if (tournament) {
-      // Default view mode can be set based on format or preference
       if (tournament.format === 'ROUND_ROBIN') {
-        setViewMode('list'); // Round Robin usually is a list/table
+        setViewMode('list');
       } else {
         setViewMode('bracket'); 
       }
@@ -61,7 +58,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       const [tournamentData, participantsData, matchesData] = await Promise.all([
         tournamentApi.getTournament(token!, tournamentId),
         tournamentApi.getParticipants(token!, tournamentId),
-        tournamentApi.getMatches(token!, tournamentId)
+        tournamentApi.getMatches(token!, tournamentId) // Expecting matches with prereq IDs
       ]);
       setTournament(tournamentData);
       setParticipants(participantsData || []);
@@ -94,7 +91,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       await tournamentApi.addParticipant(token, tournament.id, { name: participantForm.name.trim() });
       setParticipantForm({ name: '' });
       setIsAddingParticipant(false); 
-      await fetchTournamentData(); // Refresh all data after adding participant
+      await fetchTournamentData();
     } catch (err) {
       console.error("Add participant error:", err);
       setError(err instanceof Error ? err.message : 'Failed to add participant');
@@ -123,7 +120,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     setIsGenerating(true);
     try {
       await tournamentApi.generateBracket(token, tournament.id);
-      await fetchTournamentData(); // Refresh all data after generation
+      await fetchTournamentData(); 
     } catch (err) {
       console.error("Generate bracket error:", err);
       setError(err instanceof Error ? err.message : 'Failed to generate bracket');
@@ -132,7 +129,6 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     }
   };
 
-  // Updated to return the updated match or null, and update local state
   const submitScoreUpdate = async (matchToUpdate: Match, score1Str: string, score2Str: string): Promise<Match | null> => {
     if (!token || !tournament) return null;
     setError(null);
@@ -149,23 +145,14 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     }
 
     try {
-      // Assuming tournamentApi.updateMatch returns the fully updated match object
       const updatedMatchData = await tournamentApi.updateMatch(token, tournament.id, matchToUpdate.id, {
         participant1Score: score1,
         participant2Score: score2,
       });
 
-      // Update local matches state for immediate UI responsiveness
       setMatches(prevMatches =>
         prevMatches.map(m => (m.id === updatedMatchData.id ? { ...m, ...updatedMatchData } : m))
       );
-      
-      // If participant data itself changes on backend (e.g. wins/losses directly on participant record)
-      // a selective fetchParticipants() might be needed. For now, relying on match-derived stats.
-      // A full fetchTournamentData() could be called here if comprehensive refresh is critical
-      // after every score update, but it makes the UI less snappy.
-      // await fetchTournamentData(); // Optional: for full data consistency if backend does more than update match
-
       return updatedMatchData;
     } catch (err) { 
         console.error("Submit Score Update Error:", err);
@@ -174,43 +161,30 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     }
   };
 
-  // Modal submit is no longer used, but kept for reference if needed elsewhere
-  // const handleModalScoreSubmit = async (matchId: string, p1: string, p2: string) => {
-  //   const match = matches.find(m => m.id === matchId);
-  //   if(match) { 
-  //     const updatedMatch = await submitScoreUpdate(match, p1, p2);
-  //     // if(updatedMatch) setEditingMatchForModal(null); // No longer using modal
-  //   } 
-  //   else { setError("Error: Could not find match to update via modal.");}
-  // };
-
   const handleInlineScoreSubmit = async () => {
     if(!inlineEditingMatchId) return;
     const match = matches.find(m => m.id === inlineEditingMatchId);
     if(match) { 
       const updatedMatch = await submitScoreUpdate(match, inlineScores.p1, inlineScores.p2);
-      if(updatedMatch) { // If update was successful
+      if(updatedMatch) {
         setInlineEditingMatchId(null); 
         setInlineScores({p1:'', p2:''});
       }
-      // Error state is handled by submitScoreUpdate
     } else { setError("Error: Could not find match to update inline.");}
   };
   
-  // Updated to handle inline editing for all applicable formats
   const handleMatchClickForEdit = (match: Match) => {
     if (!tournament) return;
-    // Allow editing if participants are present and match is not completed
     if (match.participant1_id && match.participant2_id && match.status !== 'COMPLETED') {
         setInlineEditingMatchId(match.id);
-        // Default to '0' if scores are null/undefined, ensures inputs are controlled
         setInlineScores({ 
           p1: match.score_participant1?.toString() || '0', 
           p2: match.score_participant2?.toString() || '0'
         });
-        // setEditingMatchForModal(null); // No longer using modal
-    } else { 
-      // console.log("Match not editable or already completed:", match); 
+    } else if (match.status !== 'COMPLETED' && (!match.participant1_id || !match.participant2_id) && (match.participant1_prereq_match_id || match.participant2_prereq_match_id)){
+        // This condition allows clicking on a TBD match if its slots *could* be fillable by user action (though not via direct score input yet)
+        // For now, let's prevent direct editing of TBD matches this way unless they are fully populated
+        // console.log("Match is TBD and not directly editable for score:", match);
     }
   };
 
@@ -237,8 +211,6 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     return true;
   };
 
-  // getParticipantNameById is no longer needed here as MatchScoreEditor is removed. Bracket components handle names.
-
   const canAddParticipants = isEffectivelyRegistrationPhase(tournament) && matches.length === 0;
   
   const canGenerateBracket = 
@@ -256,7 +228,6 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-slate-900 text-slate-300 selection:bg-blue-500 selection:text-white">
-      {/* MatchScoreEditor Modal removed */}
         <div className="container mx-auto px-2 py-6 sm:px-4 md:px-6 lg:px-8 space-y-6 md:space-y-8">
           {/* Header Section */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-700 pb-6">
@@ -364,16 +335,14 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                   (matches.length > 0 || (tournament.format === 'ROUND_ROBIN' && participants.length >= 2 && tournament.status !== 'COMPLETED' && tournament.status !== 'CANCELLED')) ? ( 
                        <BracketRenderer
                           tournament={tournament}
-                          matches={matches}
+                          matches={matches} // Pass raw matches here
                           participants={participants}
-                          onMatchClick={handleMatchClickForEdit} // Used by all renderer types now
+                          onMatchClick={handleMatchClickForEdit}
                           inlineEditingMatchId={inlineEditingMatchId}
                           inlineScores={inlineScores}
                           onInlineScoreChange={setInlineScores}
                           onInlineScoreSubmit={handleInlineScoreSubmit}
                           onCancelInlineEdit={() => { setInlineEditingMatchId(null); setInlineScores({p1:'', p2:''}); }}
-                          // viewMode passed if BracketRenderer needs it to switch SE/DE views internally
-                          // currentViewMode={viewMode} // Example if needed
                       />
                   ) : (
                       <div className="text-center py-10 px-4 min-h-[200px] flex flex-col justify-center items-center">
