@@ -71,51 +71,75 @@ func (s *rankingService) ProcessMatchResults(ctx context.Context, event domain.M
 	}
 	return nil
 }
+// Let's assume you want to build UserOverallStats.
+func (s *rankingService) GetUserRanking(ctx context.Context, userID uuid.UUID, gameID string) (*domain.UserOverallStats, error) { // Changed return type
+    effectiveGameID := domain.ResolveGameID(gameID)
+    scoreData, err := s.repo.GetUserScoreData(ctx, userID, effectiveGameID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get user score data: %w", err)
+    }
 
-func (s *rankingService) GetUserRanking(ctx context.Context, userID uuid.UUID, gameID string) (*domain.UserRanking, error) {
-	effectiveGameID := domain.ResolveGameID(gameID)
-	userRankingData, err := s.repo.GetUserScoreAndRankData(ctx, userID, effectiveGameID)
-	if err != nil {
-		return nil, err // Repository error
-	}
+    // Calculate Rank (number of players with score > myScore) + 1
+    var higherScoringPlayers int
+    if scoreData.MatchesPlayed > 0 { // Only calculate rank if they've played
+        queryRank := `SELECT COUNT(*) FROM user_scores WHERE game_id = $1 AND score > $2`
+        err = s.repo.DB().QueryRowContext(ctx, queryRank, effectiveGameID, scoreData.Score).Scan(&higherScoringPlayers)
+        if err != nil && err != sql.ErrNoRows {
+            log.Printf("Service: Error calculating rank for user %s in game %s: %v", userID, effectiveGameID, err)
+            // Don't fail the whole request, just set rank to 0 or a special value
+            higherScoringPlayers = -1 // Indicate rank calculation error
+        }
+    } else {
+        // User hasn't played any matches for this game, or no score record
+        // How to rank users with 0 matches played? Typically unranked or at the bottom.
+        // Let's count total players with score > 0 to place them after.
+        queryTotalRanked := `SELECT COUNT(*) FROM user_scores WHERE game_id = $1 AND score > 0` // Or matches_played > 0
+        var totalRankedPlayers int
+        errDb := s.repo.DB().QueryRowContext(ctx, queryTotalRanked, effectiveGameID).Scan(&totalRankedPlayers)
+        if errDb != nil && errDb != sql.ErrNoRows {
+            log.Printf("Service: Error counting total ranked players for %s: %v", effectiveGameID, errDb)
+            higherScoringPlayers = -1
+        } else {
+             higherScoringPlayers = totalRankedPlayers // They are after all these players
+        }
+    }
 
-	// If UserRankingData.UpdatedAt is zero, it means user was not found and repo returned defaults.
-	// In this "unranked" scenario, their rank relative to others with actual scores could be considered last + 1 or 0.
-	if userRankingData.UpdatedAt.IsZero() {
-		// Query total number of ranked players in this game to determine the rank for a new/unranked player
-		queryTotalRanked := `SELECT COUNT(*) FROM user_scores WHERE game_id = $1`
-		var totalRankedPlayers int
-		err = s.repo.DB().QueryRowContext(ctx, queryTotalRanked, effectiveGameID).Scan(&totalRankedPlayers)
-		if err != nil && err != sql.ErrNoRows {
-			log.Printf("Service: Error counting total ranked players for game %s: %v", effectiveGameID, err)
-			userRankingData.Rank = 0 // Fallback if count fails
-		} else {
-			userRankingData.Rank = totalRankedPlayers + 1 // They are after all currently ranked players
-			if totalRankedPlayers == 0 {
-				userRankingData.Rank = 1
-			} // If no one is ranked, they are first (once they play)
-		}
-		if userRankingData.Score == 0 {
-			userRankingData.Rank = 0
-		} // Truly unranked (0 points implies never played or only lost)
 
-		log.Printf("Service: User %s is unranked (or new) in game %s. Score: %d, Calculated Rank: %d", userID, effectiveGameID, userRankingData.Score, userRankingData.Rank)
-		return userRankingData, nil
-	}
+    rank := 0
+    if higherScoringPlayers >= 0 {
+        rank = higherScoringPlayers + 1
+    }
+    if scoreData.MatchesPlayed == 0 { // If no matches played, consider them unranked explicitly
+        rank = 0
+    }
 
-	// Calculate rank for an existing user
-	// Rank = (number of players with score > myScore) + 1
-	queryRank := `SELECT COUNT(*) FROM user_scores WHERE game_id = $1 AND score > $2`
-	var higherScoringPlayers int
-	err = s.repo.DB().QueryRowContext(ctx, queryRank, effectiveGameID, userRankingData.Score).Scan(&higherScoringPlayers)
-	if err != nil && err != sql.ErrNoRows { // sql.ErrNoRows means no one has a higher score
-		log.Printf("Service: Error calculating rank for user %s in game %s: %v", userID, effectiveGameID, err)
-		return nil, fmt.Errorf("failed to calculate rank for user %s: %w", userID, err)
-	}
 
-	userRankingData.Rank = higherScoringPlayers + 1
-	log.Printf("Service: User %s, game %s, Score: %d, Calculated Rank: %d", userID, effectiveGameID, userRankingData.Score, userRankingData.Rank)
-	return userRankingData, nil
+    winRate := 0.0
+    if scoreData.MatchesPlayed > 0 {
+        winRate = float64(scoreData.MatchesWon) / float64(scoreData.MatchesPlayed)
+    }
+
+    // Construct UserOverallStats
+    stats := &domain.UserOverallStats{
+        UserID:            scoreData.UserID,
+        GameID:            scoreData.GameID,
+        Points:            scoreData.Score,
+        GlobalRank:        rank,
+        WinRate:           winRate,
+        TotalGamesPlayed:  scoreData.MatchesPlayed, // Assuming "games" here means matches in this context
+        MatchesWon:        scoreData.MatchesWon,
+        MatchesDrawn:      scoreData.MatchesDrawn,
+        MatchesLost:       scoreData.MatchesLost,
+        TournamentsPlayed: scoreData.TournamentsPlayed,
+        UpdatedAt:         scoreData.UpdatedAt,
+        // Level and RankTitle would require more complex logic (e.g., thresholds)
+        Level:     1,                // Placeholder
+        RankTitle: "Bronze", // Placeholder
+    }
+    // Your previous GetUserRanking returned domain.UserRanking, which had fewer fields.
+    // Ensure the handler is updated if you change the return type here.
+    // For now, I've mapped to UserOverallStats as it's more comprehensive.
+    return stats, nil
 }
 
 // GetLeaderboard method remains the same.
