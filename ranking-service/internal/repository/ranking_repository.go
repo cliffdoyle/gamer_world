@@ -5,98 +5,129 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/cliffdoyle/ranking-service/internal/domain" // Adjust import path
 	"github.com/google/uuid"
 )
 
+// type RankingRepository interface {
+// 	UpdateUserPoints(ctx context.Context, userID uuid.UUID, gameID string, pointsToAdd int) (newTotalPoints int, err error)
+// 	GetUserScoreAndRankData(ctx context.Context, userID uuid.UUID, gameID string) (*domain.UserRanking, error) // Renamed for clarity
+// 	GetLeaderboard(ctx context.Context, gameID string, limit int, offset int) ([]domain.LeaderboardEntry, int, error)
+// 	DB() *sql.DB // For service layer custom queries (like rank calculation)
+// }
+
+// type rankingRepository struct {
+// 	db *sql.DB
+// }
+
+// func NewRankingRepository(db *sql.DB) RankingRepository {
+// 	return &rankingRepository{db: db}
+// }
+
+type UserScoreData struct { // Helper struct for reading from DB
+	UserID            uuid.UUID
+	GameID            string
+	Score             int
+	MatchesPlayed     int
+	MatchesWon        int
+	MatchesDrawn      int
+	MatchesLost       int // We can calculate this, or store it if preferred
+	TournamentsPlayed int // This will store count of distinct (user_id, tournament_id) processed for ranking
+	UpdatedAt         time.Time
+}
+
 type RankingRepository interface {
-	UpdateUserPoints(ctx context.Context, userID uuid.UUID, gameID string, pointsToAdd int) (newTotalPoints int, err error)
-	GetUserScoreAndRankData(ctx context.Context, userID uuid.UUID, gameID string) (*domain.UserRanking, error) // Renamed for clarity
+	// ProcessMatchOutcome increments scores and match counts.
+	ProcessMatchOutcome(ctx context.Context, userID uuid.UUID, gameID string, tournamentID uuid.UUID, outcome domain.ResultType) (*UserScoreData, error)
+	// GetUserScoreData retrieves all stored data for a user in a game.
+	GetUserScoreData(ctx context.Context, userID uuid.UUID, gameID string) (*UserScoreData, error)
 	GetLeaderboard(ctx context.Context, gameID string, limit int, offset int) ([]domain.LeaderboardEntry, int, error)
-	DB() *sql.DB // For service layer custom queries (like rank calculation)
+	DB() *sql.DB
 }
 
-type rankingRepository struct {
-	db *sql.DB
-}
+type rankingRepository struct{ db *sql.DB }
 
-func NewRankingRepository(db *sql.DB) RankingRepository {
-	return &rankingRepository{db: db}
-}
+func NewRankingRepository(db *sql.DB) RankingRepository { return &rankingRepository{db: db} }
 
-// UpdateUserPoints adds points to a user's current score.
-// It initializes the score if the user is not found.
-func (r *rankingRepository) UpdateUserPoints(ctx context.Context, userID uuid.UUID, gameID string, pointsToAdd int) (int, error) {
-	effectiveGameID := domain.ResolveGameID(gameID) // Use domain helper
-	var currentPoints, newTotalPoints int
-
-	// Use a transaction to ensure atomicity for read-then-write
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback() // Rollback if not committed
-
-	// Get current points or initialize
-	querySelect := `SELECT score FROM user_scores WHERE user_id = $1 AND game_id = $2 FOR UPDATE` // FOR UPDATE to lock the row
-	err = tx.QueryRowContext(ctx, querySelect, userID, effectiveGameID).Scan(currentPoints)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// User not found, this is their first game/points for this gameID
-			currentPoints = 0 // Start from 0 if not using default table score for new entries
-			log.Printf("User %s new to game %s, starting points: %d", userID, effectiveGameID, currentPoints)
-		} else {
-			return 0, fmt.Errorf("failed to get current points for user %s, game %s: %w", userID, effectiveGameID, err)
-		}
-	}
-
-	newTotalPoints = currentPoints + pointsToAdd
-
-	// Upsert new total points
-	queryUpsert := `
-		INSERT INTO user_scores (user_id, game_id, score, updated_at)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (user_id, game_id) DO UPDATE SET
-			score = $3,  -- Directly set the new total
-			updated_at = $4;
-	`
-	_, err = tx.ExecContext(ctx, queryUpsert, userID, effectiveGameID, newTotalPoints, time.Now())
-	if err != nil {
-		return 0, fmt.Errorf("failed to update points for user %s, game %s: %w", userID, effectiveGameID, err)
-	}
-
-	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return newTotalPoints, nil
-}
-
-// GetUserScoreAndRankData retrieves score and last update time. Rank will be calculated in service.
-func (r *rankingRepository) GetUserScoreAndRankData(ctx context.Context, userID uuid.UUID, gameID string) (*domain.UserRanking, error) {
+func (r *rankingRepository) ProcessMatchOutcome(ctx context.Context, userID uuid.UUID, gameID string, tournamentID uuid.UUID, outcome domain.ResultType) (*UserScoreData, error) {
 	effectiveGameID := domain.ResolveGameID(gameID)
-	var ur domain.UserRanking
-	ur.UserID = userID
-	ur.GameID = effectiveGameID
+	points := 0
+	wonIncrement := 0
+	drawnIncrement := 0
+	lostIncrement := 0
 
-	query := `SELECT score, updated_at FROM user_scores WHERE user_id = $1 AND game_id = $2`
-	err := r.db.QueryRowContext(ctx, query, userID, effectiveGameID).Scan(&ur.Score, &ur.UpdatedAt)
+	switch outcome {
+	case domain.Win:
+		points = 3
+		wonIncrement = 1
+	case domain.Draw:
+		points = 1
+		drawnIncrement = 1
+	case domain.Loss:
+		points = 0
+		lostIncrement = 1
+	}
 
+	query := `
+		INSERT INTO user_scores (
+			user_id, game_id, score, matches_played, matches_won, matches_drawn, matches_lost, updated_at
+		)
+		VALUES ($1, $2, $3, 1, $4, $5, $6, $7)
+		ON CONFLICT (user_id, game_id) DO UPDATE SET
+			score = user_scores.score + EXCLUDED.score,
+			matches_played = user_scores.matches_played + 1,
+			matches_won = user_scores.matches_won + EXCLUDED.matches_won,
+			matches_drawn = user_scores.matches_drawn + EXCLUDED.matches_drawn,
+			matches_lost = user_scores.matches_lost + EXCLUDED.matches_lost,
+			updated_at = EXCLUDED.updated_at
+		RETURNING user_id, game_id, score, matches_played, matches_won, matches_drawn, matches_lost, updated_at;
+	`
+	// Note: tournaments_played needs a different update strategy
+	// For now, this method does not update tournaments_played directly based on a single match outcome.
+
+	var updatedData UserScoreData
+	err := r.db.QueryRowContext(ctx, query,
+		userID, effectiveGameID, points, wonIncrement, drawnIncrement, lostIncrement, time.Now(),
+	).Scan(
+		&updatedData.UserID, &updatedData.GameID, &updatedData.Score, &updatedData.MatchesPlayed,
+		&updatedData.MatchesWon, &updatedData.MatchesDrawn, &updatedData.MatchesLost, &updatedData.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process match outcome for user %s, game %s: %w", userID, effectiveGameID, err)
+	}
+
+	// Separately, ensure this (user_id, tournament_id) contributes to tournaments_played count
+	// This requires a table to track distinct (user_id, tournament_id) or similar
+	// For simplicity now, we will update/query tournaments_played elsewhere or use a proxy.
+	// If we had a separate tournaments_participated_ranking table:
+	// INSERT INTO tournaments_participated_ranking (user_id, game_id, tournament_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;
+	// And then COUNT from that table.
+	// Or, update user_scores.tournaments_played if this is a *new* tournament for this user for this game_id
+	// This makes UpdateMatchOutcome more complex.
+
+	return &updatedData, nil
+}
+
+func (r *rankingRepository) GetUserScoreData(ctx context.Context, userID uuid.UUID, gameID string) (*UserScoreData, error) {
+	effectiveGameID := domain.ResolveGameID(gameID)
+	var data UserScoreData
+	// We still need a way to get `tournaments_played`. For now, assuming it's 0 or derived in service.
+	query := `SELECT user_id, game_id, score, matches_played, matches_won, matches_drawn, matches_lost, updated_at
+              FROM user_scores WHERE user_id = $1 AND game_id = $2`
+	err := r.db.QueryRowContext(ctx, query, userID, effectiveGameID).Scan(
+		&data.UserID, &data.GameID, &data.Score, &data.MatchesPlayed, &data.MatchesWon,
+		&data.MatchesDrawn, &data.MatchesLost, &data.UpdatedAt,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// User has no score entry yet. Return default "unranked" state.
-			ur.Score = 0     // Default score for a user not yet in the table
-			ur.Rank = 0      // Will indicate unranked or need calculation based on total players
-			ur.UpdatedAt = time.Time{} // Zero time
-			return &ur, nil
+			// Return zero-value struct with UserID and GameID set, indicates not found / default state
+			return &UserScoreData{UserID: userID, GameID: effectiveGameID}, nil
 		}
 		return nil, fmt.Errorf("failed to get score data for user %s, game %s: %w", userID, effectiveGameID, err)
 	}
-	// Rank will be calculated by the service.
-	return &ur, nil
+	return &data, nil
 }
 
 // GetLeaderboard remains the same as points are just scores.
