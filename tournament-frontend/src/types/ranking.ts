@@ -17,7 +17,7 @@ export interface UserOverallStats {
 }
 
 // If you implement getLeaderboard later:
-/*
+
 export interface LeaderboardEntry {
   rank: number;
   userId: string; // UUID
@@ -32,4 +32,3 @@ export interface PaginatedLeaderboardResponse {
   pageSize: number;
   gameId: string;
 }
-*/

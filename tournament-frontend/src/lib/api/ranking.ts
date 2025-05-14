@@ -1,6 +1,6 @@
 // src/lib/api/ranking.ts
 import { API_CONFIG } from '@/config';
-import { UserOverallStats } from '@/types/ranking'; // We'll define this type next
+import { UserOverallStats,PaginatedLeaderboardResponse } from '@/types/ranking'; // We'll define this type next
 
 export const rankingApi = {
   /**
@@ -45,17 +45,32 @@ export const rankingApi = {
   },
 
   // You can add getLeaderboard API call here later if needed for a leaderboard page
-  /*
-  getLeaderboard: async (gameId?: string, page: number = 1, pageSize: number = 20): Promise<PaginatedLeaderboardResponse> => {
-    const endpoint = API_CONFIG.ENDPOINTS.LEADERBOARD(gameId, page, pageSize);
-    const response = await fetch(`${API_CONFIG.RANKING_URL}${endpoint}`, {
-      headers: { 'Content-Type': 'application/json' },
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Failed to fetch leaderboard' }));
-      throw new Error(error.message || 'Failed to fetch leaderboard');
+    getLeaderboard: async (
+    token: string, // Pass token for consistency if your API gateway/ranking service expects it for all endpoints
+    gameId?: string,
+    page: number = 1,
+    pageSize: number = 20
+  ): Promise<PaginatedLeaderboardResponse> => {
+    try {
+        const endpoint = API_CONFIG.ENDPOINTS.LEADERBOARD(gameId, page, pageSize);
+        const response = await fetch(`${API_CONFIG.RANKING_URL}${endpoint}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            // 'Authorization': `Bearer ${token}`, // Add if ranking service needs it for this endpoint
+            // 'X-Internal-Service-Key': 'YOUR_INTERNAL_KEY_IF_ANY'
+          },
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: `Failed to fetch leaderboard (status ${response.status})` }));
+          console.error('Error fetching leaderboard:', errorData);
+          throw new Error(errorData.message || 'Failed to fetch leaderboard');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error in getLeaderboard API call:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('An unexpected error occurred while fetching the leaderboard');
     }
-    return response.json();
   },
-  */
 };
