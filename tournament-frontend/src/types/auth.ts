@@ -17,6 +17,14 @@ export interface User {
   // updated_at?: string; // Or Date
   rank?: string | null; // Optional rank field
   level?: number; // Optional level field
+  stats?: UserStats | null;
+}
+
+export interface UserStats{
+  winRate?: string | null;
+  totalGames?: number | null;
+  tournamentsPLayed?: number | null;
+  globalRank?: number | null;
 }
 
 export interface LoginRequest {
