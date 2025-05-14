@@ -803,6 +803,7 @@ type RS_UserMatchOutcome struct {
 
 type RS_MatchResultEvent struct {
 	GameID    string                `json:"gameId,omitempty"`
+	TournamentID uuid.UUID             `json:"tournamentId,omitempty"`
 	Users     []RS_UserMatchOutcome `json:"users"`
 	MatchID   uuid.UUID             `json:"matchId,omitempty"`
 	Timestamp time.Time             `json:"timestamp"`
@@ -914,6 +915,7 @@ func (s *tournamentService) UpdateMatchScore(
 		if len(usersToRank) > 0 {
 			event := RS_MatchResultEvent{
 				GameID:    tournament.Game,
+				TournamentID: tournament.ID,
 				MatchID:   match.ID,
 				Timestamp: time.Now(),
 				Users:     usersToRank,
@@ -925,6 +927,7 @@ func (s *tournamentService) UpdateMatchScore(
 		event := RS_MatchResultEvent{
 			GameID:    tournament.Game, // Use Game from tournament domain
 			MatchID:   match.ID,
+			TournamentID: tournament.ID,
 			Timestamp: time.Now(),
 			Users: []RS_UserMatchOutcome{
 				{UserID: *participant1.UserID, Outcome: finalP1Outcome},
