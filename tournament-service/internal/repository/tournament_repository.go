@@ -42,19 +42,15 @@ func (r *tournamentRepository) Create(ctx context.Context, tournament *domain.To
 	tournament.CreatedAt = now
 	tournament.UpdatedAt = now
 
-	// Convert maps to JSONB
-	prizePoolJSON, err := json.Marshal(tournament.PrizePool)
-	if err != nil {
-		return err
+	if tournament.PrizePool == nil {
+		tournament.PrizePool = json.RawMessage("null") // Or "{}", depending on DB default/preference
+	}
+	if tournament.CustomFields == nil {
+		tournament.CustomFields = json.RawMessage("null") // Or "{}"
 	}
 
-	customFieldsJSON, err := json.Marshal(tournament.CustomFields)
-	if err != nil {
-		return err
-	}
 
-	// Execute SQL insert
-	_, err = r.db.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO tournaments (
 			id, name, description, game, format, status,
 			max_participants, registration_deadline, start_time,
@@ -72,18 +68,80 @@ func (r *tournamentRepository) Create(ctx context.Context, tournament *domain.To
 		tournament.Format,
 		tournament.Status,
 		tournament.MaxParticipants,
-		tournament.RegistrationDeadline,
-		tournament.StartTime,
-		tournament.EndTime,
+		tournament.RegistrationDeadline, // This is *time.Time, handles NULL correctly
+		tournament.StartTime,            // This is *time.Time
+		tournament.EndTime,              // This is *time.Time
 		tournament.CreatedBy,
-		tournament.CreatedAt,
-		tournament.UpdatedAt,
+		tournament.CreatedAt,           // This is time.Time (NOT NULL)
+		tournament.UpdatedAt,           // This is time.Time (NOT NULL)
 		tournament.Rules,
-		prizePoolJSON,
-		customFieldsJSON,
+		tournament.PrizePool,    // Pass json.RawMessage directly
+		tournament.CustomFields, // Pass json.RawMessage directly
 	)
 
+
 	return err
+}
+
+
+// scanTournament is a helper to scan a tournament row
+func scanTournament(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*domain.Tournament, error) {
+	var t domain.Tournament
+	// For json.RawMessage, scan into []byte or sql.RawBytes.
+	// If the DB column can be NULL, use sql.Null[Type] for basic types,
+	// or check for nil after scanning for []byte for JSON types.
+	var prizePoolBytes, customFieldsBytes []byte
+	var dbRegDeadline, dbStartTime, dbEndTime sql.NullTime
+
+	err := scanner.Scan(
+		&t.ID,
+		&t.Name,
+		&t.Description,
+		&t.Game,
+		&t.Format,
+		&t.Status,
+		&t.MaxParticipants,
+		&dbRegDeadline,
+		&dbStartTime,
+		&dbEndTime,
+		&t.CreatedBy,
+		&t.CreatedAt, // Assuming this is NOT NULL in DB and time.Time in struct
+		&t.UpdatedAt, // Assuming this is NOT NULL in DB and time.Time in struct
+		&t.Rules,
+		&prizePoolBytes,    // Scan directly into []byte
+		&customFieldsBytes, // Scan directly into []byte
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Assign to struct pointers if DB value was not NULL
+	if dbRegDeadline.Valid {
+		t.RegistrationDeadline = &dbRegDeadline.Time
+	}
+	if dbStartTime.Valid {
+		t.StartTime = &dbStartTime.Time
+	}
+	if dbEndTime.Valid {
+		t.EndTime = &dbEndTime.Time
+	}
+
+	// Assign scanned bytes to json.RawMessage fields if not nil
+	// json.RawMessage(nil) is valid and represents JSON null
+	if prizePoolBytes != nil {
+		t.PrizePool = json.RawMessage(prizePoolBytes)
+	}
+	if customFieldsBytes != nil {
+		t.CustomFields = json.RawMessage(customFieldsBytes)
+	}
+	// If prizePoolBytes or customFieldsBytes are nil from the DB (SQL NULL),
+	// t.PrizePool and t.CustomFields will remain nil (their zero value),
+	// which marshals to JSON `null` if omitempty is not set or is set but field is non-nil.
+    // With omitempty, if they are nil, they are omitted from JSON.
+
+	return &t, nil
 }
 
 // GetByID retrieves a tournament by ID
