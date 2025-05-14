@@ -1,47 +1,33 @@
+// src/types/auth.ts
 export interface User {
-  id: string;
+  id: string; // User's UUID
   username: string;
   email?: string;
   display_name?: string;
   profile_picture_url?: string;
   bio?: string;
-  gaming_handle_psn?: string;
-  gaming_handle_xbox?: string;
-  gaming_handle_origin_pc?: string;
-  preferred_fifa_version?: string;
-  favorite_real_world_club?: string;
-  provider?: string; // e.g., "google", "credentials"
-  // Add any other fields that your user object from the API might have
-  // For example, if your API returns created_at, updated_at:
-  // created_at?: string; // Or Date
-  // updated_at?: string; // Or Date
-  rank?: string | null; // Optional rank field
-  level?: number; // Optional level field
-  stats?: UserStats | null;
+  // ... other existing fields ...
+  provider?: string;
+
+  // Stats from Ranking Service
+  rankTitle?: string | null;     // e.g., "Bronze", "Gold", "Unranked"
+  level?: number;                // e.g., 1, 2, 3
+  points?: number;
+  globalRank?: number | null;    // Numerical rank, e.g., 1, 10, 0 for unranked
+  winRate?: number;              // e.g., 0.75 for 75%
+  totalGamesPlayed?: number;
+  matchesWon?: number;
+  matchesDrawn?: number;
+  matchesLost?: number;
+  tournamentsPlayed?: number;
+  statsLastUpdatedAt?: string; // ISO date string from ranking service's UserOverallStats.updatedAt
 }
 
-export interface UserStats{
-  winRate?: string | null;
-  totalGames?: number | null;
-  tournamentsPLayed?: number | null;
-  globalRank?: number | null;
-}
-
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
-
-export interface RegisterRequest extends LoginRequest {
-  // email?: string; // Consider if email should be part of registration form
-  confirmPassword: string;
-}
-
+// AuthResponse and other types remain the same
+export interface LoginRequest { /* ... */ }
+export interface RegisterRequest extends LoginRequest { /* ... */ }
 export interface AuthResponse {
   token: string;
-  user: User; // This will now use the expanded User type
+  user: User;
 }
-
-export interface AuthError {
-  message: string;
-} 
+export interface AuthError { /* ... */ }
