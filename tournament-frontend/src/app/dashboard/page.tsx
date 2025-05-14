@@ -9,14 +9,14 @@ import { FaTrophy, FaGamepad, FaUsers, FaMedal, FaChevronRight } from 'react-ico
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { tournamentApi } from '@/lib/api/tournament';
-import { TournamentResponse as FetchedTournament, UserActivity as FetchedActivity, TournamentStatus } from '@/types/tournament'; // Assuming TournamentStatus is exported from types
+import { TournamentResponse as FetchedTournament, UserActivity as FetchedActivity } from '@/types/tournament';
 
-const TEAL_COLOR_HEX = "#2DD4BF"; // You can use this for direct color props on icons if needed
+// === HELPER FUNCTIONS (Restored from your original code) ===
 
 const formatTournamentStatusForDisplay = (
-    status: FetchedTournament['status'] | undefined, // Allow undefined for safety
+    status: FetchedTournament['status'] | undefined,
     registrationDeadline?: string | null,
-    startTime?: string | null // Optional: for more nuanced status like "Upcoming"
+    // startTime?: string | null // Optional: for more nuanced status like "Upcoming"
 ): string => {
     if (status === undefined || status === null) return 'Status Unknown';
 
@@ -39,91 +39,49 @@ const formatTournamentStatusForDisplay = (
         case 'CANCELLED':
             return 'Cancelled';
         default:
-            // Fallback for any other string status values that might not be in your enum
-            // but could come from a less strict backend or future additions
             return String(status).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
     }
 };
 
-// REFINED Helper to format prize pool for display
 const formatPrize = (prizePoolInput: any): string => {
-    // console.log('[formatPrize] Input:', prizePoolInput, '| Type:', typeof prizePoolInput);
-
     if (prizePoolInput === null || prizePoolInput === undefined) {
-        // console.log('[formatPrize] -> N/A (null or undefined)');
         return 'N/A';
     }
-
     let prizeData = prizePoolInput;
-
-    // If the input is a string, it could be simple text, JSON representation of text, or JSON object.
     if (typeof prizeData === 'string') {
-        if (prizeData.toLowerCase() === 'null') {
-            // console.log('[formatPrize] -> N/A (string "null")');
-            return 'N/A';
-        }
-        if (prizeData.trim() === '') {
-            // console.log('[formatPrize] -> N/A (empty string)');
+        if (prizeData.toLowerCase() === 'null' || prizeData.trim() === '') {
             return 'N/A';
         }
         try {
-            const parsed = JSON.parse(prizeData);
-            // Successfully parsed - now prizeData is what the JSON represented.
-            // It could be an object, a string (e.g., JSON.parse('"Simple Text"')), a number, etc.
-            prizeData = parsed;
-            // console.log('[formatPrize] Parsed string to:', prizeData, typeof prizeData);
+            prizeData = JSON.parse(prizeData);
         } catch (e) {
-            // Parsing failed: means prizeData is a simple string like "Bragging Rights" or "$100 Cash".
-            // console.log('[formatPrize] -> Not JSON, returning original string:', prizeData);
-            return prizeData; // Return the original string as is.
+            return prizeData; // Is a simple string
         }
     }
-
-    // At this point, prizeData is either the originally parsed object,
-    // or what the string was parsed into (which could be another string, number, or object).
     if (typeof prizeData === 'object' && prizeData !== null) {
         if (prizeData.currency && prizeData.amount !== undefined && prizeData.amount !== null) {
-            const result = `${prizeData.currency} ${Number(prizeData.amount).toLocaleString()}`;
-            // console.log('[formatPrize] -> Object with currency/amount:', result);
-            return result;
+            return `${prizeData.currency} ${Number(prizeData.amount).toLocaleString()}`;
         }
         if (prizeData.details && typeof prizeData.details === 'string') {
-            // console.log('[formatPrize] -> Object with details:', prizeData.details);
             return prizeData.details;
         }
-        // Handle cases like: {"1st Prize": "1000 USD", "2nd Prize": "500 USD"}
         const entries = Object.entries(prizeData);
         if (entries.length > 0) {
-            // Just show the first entry for brevity on the dashboard, or join them.
-            // For dashboard, maybe just "Prizes Available" or first one.
             const firstPrize = entries[0];
             if (firstPrize && typeof firstPrize[1] === 'string') {
-                 const result = `${firstPrize[0]}: ${firstPrize[1]}`;
-                 // console.log('[formatPrize] -> First entry of object:', result);
-                 return result;
+                 return `${firstPrize[0]}: ${firstPrize[1]}`;
             }
-            // Fallback if object structure is not as expected for prize details
-            // console.log('[formatPrize] -> Complex object, returning "Multiple Prizes"');
             return 'Multiple Prizes';
         }
-
-        // console.log('[formatPrize] -> Object, but no recognized prize structure, returning "View Details"');
-        return 'View Details'; // If it's an object but doesn't match known prize structures.
+        return 'View Details';
     }
-
-    // If prizeData is now a simple string (from JSON.parse('"text"')) or a number.
     if (prizeData !== null && prizeData !== undefined) {
-        const result = String(prizeData);
-        // console.log('[formatPrize] -> Fallback to String():', result);
-        return result;
+        return String(prizeData);
     }
-    
-    // console.log('[formatPrize] -> Fallback to N/A (end of function)');
     return 'N/A';
 };
 
-
-const formatDateForActivity = (isoString: string): string => {
+const formatDateForActivity = (isoString: string | undefined): string => {
     if (!isoString) return 'N/A';
     try {
         return new Date(isoString).toLocaleDateString('en-US', {
@@ -132,19 +90,21 @@ const formatDateForActivity = (isoString: string): string => {
     } catch (e) { return 'Invalid Date'; }
 };
 
+const getActivityDotColor = (activityType: string | undefined): string => {
+    const upperType = activityType?.toUpperCase() || "";
+    if (upperType.includes('WIN') || upperType.includes('WON')) return 'bg-green-400';
+    if (upperType.includes('JOIN') || upperType.includes('CREATE')) return 'bg-teal-400';
+    if (upperType.includes('BADGE') || upperType.includes('ACHIEVEMENT')) return 'bg-yellow-400';
+    if (upperType.includes('POST') || upperType.includes('CHAT')) return 'bg-blue-400';
+    return 'bg-gray-500';
+};
+
+// === END OF HELPER FUNCTIONS ===
+
+
 export default function Dashboard() {
   const router = useRouter();
-  const { token, user: authUser } = useAuth();
-  
-  const dashboardUser = {
-    username: authUser?.username || "Player",
-    avatar: authUser?.profile_picture_url || "/avatar.png", // Make sure User type in AuthContext has profile_picture_url
-    rank: authUser?.rank || "Unranked",       // Make sure User type in AuthContext has rank
-    level: authUser?.level || 1,              // Make sure User type in AuthContext has level
-    stats: { 
-        winRate: "N/A", totalGames: 0, tournaments: 0, currentRank: 0 // These remain placeholders
-    }
-  };
+  const { token, user: authUser } = useAuth(); // authUser now contains enriched stats
 
   const [activeTournaments, setActiveTournaments] = useState<FetchedTournament[]>([]);
   const [isLoadingTournaments, setIsLoadingTournaments] = useState(true);
@@ -156,63 +116,45 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (token) {
-      const fetchDashboardData = async () => {
-        // Fetch Active Tournaments
+      const fetchOtherDashboardData = async () => {
         setIsLoadingTournaments(true);
         setTournamentsError(null);
         try {
           const tourneyResponse = await tournamentApi.getActiveTournaments(token, 1, 3);
-          // console.log('Dashboard: Raw Active Tournaments Response:', JSON.stringify(tourneyResponse, null, 2));
-          if (tourneyResponse.tournaments) {
-             setActiveTournaments(tourneyResponse.tournaments);
-             tourneyResponse.tournaments.forEach(t => {
-                console.log(`Dashboard Tournament [${t.name}]: currentParticipants=${t.currentParticipants}, prizePool=${JSON.stringify(t.prizePool)}, status=${t.status}`);
-             });
-          } else {
-            setActiveTournaments([]); // Ensure it's an array if backend sends null/undefined
-          }
+          setActiveTournaments(tourneyResponse.tournaments || []);
         } catch (err: any) {
-          console.error("Dashboard: Failed to fetch active tournaments:", err);
           setTournamentsError(err.message || "Could not load active tournaments.");
         } finally {
           setIsLoadingTournaments(false);
         }
 
-        // Fetch Recent Activities
         setIsLoadingActivities(true);
         setActivitiesError(null);
         try {
           const activityResponse = await tournamentApi.getRecentActivities(token, 1, 4);
-          // console.log('Dashboard: Raw Recent Activities Response:', JSON.stringify(activityResponse, null, 2));
-          if (activityResponse.activities) {
-            setRecentActivities(activityResponse.activities);
-          } else {
-            setRecentActivities([]); // Ensure it's an array
-            console.warn("Dashboard: Recent activities response did not contain an 'activities' array.");
-          }
+          setRecentActivities(activityResponse.activities || []);
         } catch (err: any) {
-          console.error("Dashboard: Failed to fetch recent activities:", err);
           setActivitiesError(err.message || "Could not load recent activities.");
         } finally {
           setIsLoadingActivities(false);
         }
       };
-
-      fetchDashboardData();
+      fetchOtherDashboardData();
     } else {
       setIsLoadingTournaments(false);
       setIsLoadingActivities(false);
     }
   }, [token]);
-
-  const getActivityDotColor = (activityType: string | undefined): string => {
-    const upperType = activityType?.toUpperCase() || "";
-    if (upperType.includes('WIN') || upperType.includes('WON')) return 'bg-green-400';
-    if (upperType.includes('JOIN') || upperType.includes('CREATE')) return 'bg-teal-400';
-    if (upperType.includes('BADGE') || upperType.includes('ACHIEVEMENT')) return 'bg-yellow-400';
-    if (upperType.includes('POST') || upperType.includes('CHAT')) return 'bg-blue-400';
-    return 'bg-gray-500';
-  };
+  
+  if (!authUser) {
+      return (
+          <ProtectedRoute>
+              <div className="min-h-screen bg-black flex justify-center items-center">
+                  <div className="text-white">Loading user data...</div>
+              </div>
+          </ProtectedRoute>
+      );
+  }
 
   return (
     <ProtectedRoute>
@@ -222,25 +164,34 @@ export default function Dashboard() {
           <div className="mb-10 bg-black border border-teal-500/30 rounded-xl p-6 shadow-lg shadow-teal-500/10 flex flex-col md:flex-row items-center gap-6">
             <div className="relative flex-shrink-0">
               <div className="relative w-24 h-24 rounded-full border-4 border-teal-400 shadow-lg shadow-teal-400/40 overflow-hidden">
-                <Image src={dashboardUser.avatar} alt="User Avatar" width={96} height={96} className="object-cover w-full h-full" priority />
+                <Image 
+                  src={authUser.profile_picture_url || "/avatar.png"} 
+                  alt="User Avatar" 
+                  width={96} height={96} 
+                  className="object-cover w-full h-full" priority 
+                />
               </div>
               <div className="absolute -bottom-2 -right-2 bg-teal-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-md">
-                LVL {dashboardUser.level}
+                LVL {authUser.level || 1}
               </div>
             </div>
             <div className="flex-1 text-center md:text-left">
-              <h1 className="text-3xl font-bold text-white mb-1">Welcome back, <span className="text-teal-400">{dashboardUser.username}</span>!</h1>
-              <p className="text-gray-400 text-lg">Current Rank: <span className="text-teal-400 font-semibold">{dashboardUser.rank}</span></p>
+              <h1 className="text-3xl font-bold text-white mb-1">
+                Welcome back, <span className="text-teal-400">{authUser.username || "Player"}</span>!
+              </h1>
+              <p className="text-gray-400 text-lg">
+                Current Rank: <span className="text-teal-400 font-semibold">{authUser.rankTitle || "Unranked"}</span>
+              </p>
             </div>
           </div>
 
-          {/* Stats Grid - placeholders for now */}
+          {/* Stats Grid - Now uses authUser for stats */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             {[
-              { icon: FaTrophy, label: "Win Rate", value: dashboardUser.stats.winRate },
-              { icon: FaGamepad, label: "Total Games", value: dashboardUser.stats.totalGames },
-              { icon: FaUsers, label: "Tournaments Played", value: dashboardUser.stats.tournaments },
-              { icon: FaMedal, label: "Global Rank", value: dashboardUser.stats.currentRank > 0 ? `#${dashboardUser.stats.currentRank}` : 'N/A' },
+              { icon: FaTrophy, label: "Win Rate", value: authUser.winRate !== undefined && authUser.winRate !== null ? `${(authUser.winRate * 100).toFixed(0)}%` : 'N/A' },
+              { icon: FaGamepad, label: "Total Games", value: authUser.totalGamesPlayed !== undefined && authUser.totalGamesPlayed !== null ? authUser.totalGamesPlayed : 'N/A' },
+              { icon: FaUsers, label: "Tournaments Played", value: authUser.tournamentsPlayed !== undefined && authUser.tournamentsPlayed !== null ? authUser.tournamentsPlayed : 'N/A' },
+              { icon: FaMedal, label: "Global Rank", value: authUser.globalRank && authUser.globalRank > 0 ? `#${authUser.globalRank}` : (authUser.totalGamesPlayed && authUser.totalGamesPlayed > 0 ? 'Unranked' : 'N/A') },
             ].map((stat, index) => (
               <div key={index} className="bg-gray-950 rounded-xl p-5 border border-teal-500/20 shadow-md hover:border-teal-500/50 hover:shadow-teal-500/20 transition-all duration-300 transform hover:-translate-y-1 flex items-center gap-4">
                 <div className="w-12 h-12 bg-teal-500/10 rounded-lg flex items-center justify-center text-teal-400 flex-shrink-0">
@@ -254,7 +205,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Active Tournaments */}
             <div className="lg:col-span-2 bg-black border border-teal-500/30 rounded-xl p-6 shadow-lg shadow-teal-500/10">
               <div className="flex items-center justify-between mb-6">
@@ -276,7 +227,6 @@ export default function Dashboard() {
                       <span className="text-sm font-bold text-teal-400">{formatPrize(tournament.prizePool)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-gray-400">
-                      {/* Ensure currentParticipants is treated as a number */}
                       <span>{Number(tournament.currentParticipants) || 0} Participants</span>
                       <span className={`font-medium ${tournament.status === 'REGISTRATION' || tournament.status === 'IN_PROGRESS' ? 'text-green-400' : 'text-yellow-400'}`}>
                         {formatTournamentStatusForDisplay(tournament.status, tournament.registrationDeadline)}
@@ -293,7 +243,7 @@ export default function Dashboard() {
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   <FaUsers className="text-teal-400" size={24} /> Recent Activity
                 </h2>
-                <button onClick={() => router.push('/profile/activity')} // Or your desired activity page
+                <button onClick={() => router.push('/profile/activity')}
                   className="text-sm text-teal-400 hover:text-teal-300 font-semibold transition-colors flex items-center gap-1">
                   View All <FaChevronRight size={12} />
                 </button>
@@ -315,12 +265,12 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/tournaments" passHref legacyBehavior><a className="w-full sm:w-auto bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg shadow-teal-500/30 hover:shadow-teal-600/40 transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-opacity-75">Find a Tournament</a></Link> 
             <Link href="/tournaments/create" passHref legacyBehavior><a className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75 text-center inline-block">Create New Tournament</a></Link>
             <button onClick={() => router.push('/leaderboards')} className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 font-semibold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">View Leaderboards</button>
           </div>
+
         </div>
       </div>
     </ProtectedRoute>

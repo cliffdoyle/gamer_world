@@ -1,6 +1,6 @@
 // src/lib/api/tournament.ts (or your API file name)
 
-import { API_CONFIG } from '../config';
+import { API_CONFIG } from '../../config';
 import {
   TournamentResponse, // This is likely your existing detailed frontend Tournament type
   CreateTournamentRequest,

@@ -45,7 +45,7 @@ func main() {
 	}
 	// Add defaults for other DB vars if needed
 
-	dbConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+	dbConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		dbHost, dbPort, dbUser, dbPass, dbName)
 
 	db, err := sql.Open("postgres", dbConnStr)

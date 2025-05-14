@@ -1,4 +1,4 @@
-import { API_CONFIG } from '../config';
+import { API_CONFIG } from '../../config';
 import { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth';
 
 export const authApi = {
