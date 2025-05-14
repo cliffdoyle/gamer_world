@@ -88,12 +88,12 @@ type TournamentResponse struct {
 	Format              TournamentFormat `json:"format"`
 	Status              TournamentStatus `json:"status"`
 	MaxParticipants     int              `json:"max_participants"`
-	CurrentParticipants int              `json:"current_participants"`
-	RegistrationDeadline *time.Time      `json:"registration_deadline"`
-	StartTime           *time.Time       `json:"start_time"`
-	EndTime             *time.Time       `json:"end_time"`
-	CreatedAt           time.Time        `json:"created_at"`
+	CurrentParticipants int              `json:"currentParticipants"`
+	RegistrationDeadline *time.Time      `json:"registrationDeadline"`
+	StartTime           *time.Time       `json:"startTime"`
+	EndTime             *time.Time       `json:"endTime"`
+	CreatedAt           time.Time        `json:"createdAt"`
 	Rules               string           `json:"rules"`
-    PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
-    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
+    PrizePool            json.RawMessage `json:"prizePool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"customFields,omitempty"`// Assuming this is also flexible JSON
 }
