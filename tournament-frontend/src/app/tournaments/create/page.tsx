@@ -20,8 +20,8 @@ export default function CreateTournamentPage() {
     game: '',
     format: 'SINGLE_ELIMINATION' as TournamentFormat,
     maxParticipants: '', // Kept as string for input field, parsed on submit
-    registrationDeadline: '',
-    startTime: '',
+    registrationDeadline: '', // Value from datetime-local is YYYY-MM-DDTHH:MM
+    startTime: '',            // Value from datetime-local is YYYY-MM-DDTHH:MM
     rules: '',
     prizePool: '',
   });
@@ -45,14 +45,43 @@ export default function CreateTournamentPage() {
         }
       }
 
+      // --- DATETIME FORMATTING FIX START ---
+      let regDeadlineISO: string | undefined = undefined;
+      if (formData.registrationDeadline) {
+          // datetime-local input value needs to be converted to a full ISO string (preferably UTC)
+          // for Go's time.Time to parse it correctly via JSON unmarshal.
+          const dateObj = new Date(formData.registrationDeadline);
+          if (!isNaN(dateObj.getTime())) { // Check if date conversion was valid
+               regDeadlineISO = dateObj.toISOString(); // Converts to UTC "YYYY-MM-DDTHH:mm:ss.sssZ"
+          } else {
+               console.warn("Invalid registration deadline format in form:", formData.registrationDeadline);
+               // Optionally throw an error to inform the user, or let backend validation catch it
+               // For now, we'll send undefined if parsing failed, backend might reject if it's required and format is bad
+               // throw new Error('Invalid format for Registration Deadline.');
+          }
+      }
+
+      let startTimeISO: string | undefined = undefined;
+      if (formData.startTime) {
+          const dateObj = new Date(formData.startTime);
+          if(!isNaN(dateObj.getTime())){
+              startTimeISO = dateObj.toISOString();
+          } else {
+              console.warn("Invalid start time format in form:", formData.startTime);
+              // throw new Error('Invalid format for Start Time.');
+          }
+      }
+      // --- DATETIME FORMATTING FIX END ---
+
       const tournamentData: CreateTournamentRequest = {
         name: formData.name.trim(),
         description: formData.description.trim(),
         game: formData.game.trim(),
         format: formData.format,
         maxParticipants: parseInt(formData.maxParticipants) || 0,
-        registrationDeadline: formData.registrationDeadline || undefined,
-        startTime: formData.startTime || undefined,
+        // Use the ISO formatted strings or undefined
+        registrationDeadline: regDeadlineISO,
+        startTime: startTimeISO,
         rules: formData.rules.trim() === '' ? undefined : formData.rules.trim(),
         prizePool: prizePoolValue,
       };
@@ -64,13 +93,12 @@ export default function CreateTournamentPage() {
         throw new Error('Game is required.');
       }
       if (tournamentData.maxParticipants < 2 && tournamentData.maxParticipants !== 0) {
-        throw new Error('Maximum Participants must be at least 2 (or 0 for unlimited).');
+        // Assuming 0 might mean "unlimited" on your backend
+        throw new Error('Maximum Participants must be at least 2 (or 0 for unlimited, if supported).');
       }
 
       const response = await tournamentApi.createTournament(token, tournamentData);
       console.log('Tournament created:', response);
-      // Consider navigating to the new tournament's detail page if the API returns an ID
-      // router.push(`/tournaments/${response.id}`);
       router.push('/tournaments');
     } catch (err) {
       console.error('Error creating tournament:', err);
@@ -211,7 +239,7 @@ export default function CreateTournamentPage() {
                     type="datetime-local"
                     name="registrationDeadline"
                     id="registrationDeadline"
-                    value={formData.registrationDeadline}
+                    value={formData.registrationDeadline} // This will be like "2025-05-14T16:44"
                     onChange={handleChange}
                     className="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-gray-900 dark:text-slate-100 bg-gray-50 dark:bg-slate-700"
                 />
@@ -224,13 +252,12 @@ export default function CreateTournamentPage() {
                     type="datetime-local"
                     name="startTime"
                     id="startTime"
-                    value={formData.startTime}
+                    value={formData.startTime} // This will be like "2025-05-14T18:06"
                     onChange={handleChange}
                     className="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-gray-900 dark:text-slate-100 bg-gray-50 dark:bg-slate-700"
                 />
                 </div>
             </div>
-
 
             {/* Tournament Rules */}
             <div>
