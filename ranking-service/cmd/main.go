@@ -1,4 +1,4 @@
-// cmd/main.go for Ranking Service
+// ranking-service/cmd/main.go
 package main
 
 import (
@@ -12,9 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	// Adjust import paths as per your project structure
+	"github.com/cliffdoyle/ranking-service/internal/client" // Your new client package
 	"github.com/cliffdoyle/ranking-service/internal/handler"
 	"github.com/cliffdoyle/ranking-service/internal/repository"
 	"github.com/cliffdoyle/ranking-service/internal/service"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -26,7 +29,7 @@ func main() {
 		log.Println("Warning: .env file not found for ranking-service")
 	}
 
-	// --- Database Connection (similar to Tournament Service) ---
+	// --- Database Connection ---
 	dbHost := os.Getenv("RANKING_DB_HOST")
 	dbPort := os.Getenv("RANKING_DB_PORT")
 	dbUser := os.Getenv("RANKING_DB_USER")
@@ -36,13 +39,13 @@ func main() {
 
 	if serverPort == "" {
 		serverPort = "8083"
-	} // Different default port
+	}
 	if dbHost == "" {
 		dbHost = "localhost"
 	}
-	// Add similar defaults for other DB vars if needed
+	// Add defaults for other DB vars if needed
 
-	dbConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", // Adjust sslmode
+	dbConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPass, dbName)
 
 	db, err := sql.Open("postgres", dbConnStr)
@@ -57,26 +60,36 @@ func main() {
 
 	// --- Initialize Layers ---
 	rankingRepo := repository.NewRankingRepository(db)
-	rankingService := service.NewRankingService(rankingRepo)
-	rankingHandler := handler.NewRankingHandler(rankingService)
+
+	// Instantiate the HTTP User Service Client
+	userServiceURL := os.Getenv("USER_SERVICE_URL") // e.g., "http://localhost:8081" (port of user-service)
+	// interServiceKey := os.Getenv("INTERNAL_SERVICE_KEY") // For securing inter-service calls
+
+	if userServiceURL == "" {
+		log.Fatal("USER_SERVICE_URL environment variable is not set. Cannot initialize UserServiceClient.")
+	}
+	userServiceClient := client.NewHTTPUserServiceClient(userServiceURL /*, interServiceKey */)
+
+	rankingSvc := service.NewRankingService(rankingRepo, userServiceClient) // Pass the client
+	rankingHandler := handler.NewRankingHandler(rankingSvc)
 
 	// --- Setup Gin Router ---
 	router := gin.Default()
 
-	// CORS Middleware (copy from Tournament Service or adjust as needed)
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000", "http://localhost:8082"} // Allow frontend and Tournament Service
+	// Ensure your tournament service (e.g., localhost:8082) and frontend (e.g. localhost:3000) are allowed
+	config.AllowOrigins = []string{"http://localhost:3000", "http://localhost:8082"}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Internal-Service-Key"} // Add if you use it
 	config.AllowCredentials = true
 	router.Use(cors.New(config))
 
 	// --- Routes ---
-	rg := router.Group("/rankings") // Base path for ranking routes
+	rg := router.Group("/rankings")
 	{
 		rg.POST("/match-results", rankingHandler.ProcessMatchResults)
-		rg.GET("/users/:userId", rankingHandler.GetUserRanking) // e.g., /rankings/users/uuid-of-user?gameId=fifa24
-		rg.GET("/leaderboard", rankingHandler.GetLeaderboard)   // e.g., /rankings/leaderboard?gameId=fifa24&page=1
+		rg.GET("/users/:userId", rankingHandler.GetUserRanking)    // userId here is UUID string
+		rg.GET("/leaderboard", rankingHandler.GetLeaderboard)
 	}
 	router.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ranking-service-ok"}) })
 
@@ -99,9 +112,9 @@ func main() {
 	<-quit
 	log.Println("Ranking Service shutting down...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctxShutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(ctxShutdown); err != nil {
 		log.Fatalf("Ranking Service forced to shutdown: %v", err)
 	}
 	log.Println("Ranking Service exited properly")
