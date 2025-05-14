@@ -2,6 +2,7 @@ package domain
 
 import (
 	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -9,10 +10,10 @@ type UserOverallStats struct {
 	UserID            uuid.UUID `json:"userId"`
 	GameID            string    `json:"gameId"` // e.g., "global" or a specific game
 	Level             int       `json:"level"`
-	RankTitle         string    `json:"rankTitle"`     // "Bronze", "Gold", etc.
-	Points            int       `json:"points"`          // Current points from 3-1-0 system
-	GlobalRank        int       `json:"globalRank"`      // Numerical position in leaderboard
-	WinRate           float64   `json:"winRate"`         // 0.0 to 1.0
+	RankTitle         string    `json:"rankTitle"`  // "Bronze", "Gold", etc.
+	Points            int       `json:"points"`     // Current points from 3-1-0 system
+	GlobalRank        int       `json:"globalRank"` // Numerical position in leaderboard
+	WinRate           float64   `json:"winRate"`    // 0.0 to 1.0
 	TotalGamesPlayed  int       `json:"totalGamesPlayed"`
 	MatchesWon        int       `json:"matchesWon"`
 	MatchesDrawn      int       `json:"matchesDrawn"`
@@ -22,21 +23,26 @@ type UserOverallStats struct {
 }
 
 type LeaderboardEntry struct {
-    Rank      int       `json:"rank"`
-    UserID    uuid.UUID `json:"userId"`
-    UserName  string    `json:"userName,omitempty"` // Optional, if fetched from User Service
-    Score     int       `json:"score"`            // Total points
+	Rank     int       `json:"rank"`
+	UserID   uuid.UUID `json:"userId"`
+	UserName string    `json:"userName,omitempty"` // Optional, if fetched from User Service
+	Score    int       `json:"score"`              // Total points
 }
 
 type ResultType string
-const ( Win ResultType = "WIN"; Draw ResultType = "DRAW"; Loss ResultType = "LOSS" )
+
+const (
+	Win  ResultType = "WIN"
+	Draw ResultType = "DRAW"
+	Loss ResultType = "LOSS"
+)
 
 type MatchResultEvent struct {
-	GameID    string             `json:"gameId,omitempty"`
-	Users     []UserMatchOutcome `json:"users" binding:"required,dive"`
-	MatchID   uuid.UUID          `json:"matchId,omitempty"`
-	TournamentID uuid.UUID   `json:"tournamentId,omitempty"` // ADDED: Useful for tracking tournament participation
-	Timestamp time.Time          `json:"timestamp"`
+	GameID       string             `json:"gameId,omitempty"`
+	Users        []UserMatchOutcome `json:"users" binding:"required,dive"`
+	MatchID      uuid.UUID          `json:"matchId,omitempty"`
+	TournamentID uuid.UUID          `json:"tournamentId,omitempty"` // ADDED: Useful for tracking tournament participation
+	Timestamp    time.Time          `json:"timestamp"`
 }
 type UserMatchOutcome struct {
 	UserID  uuid.UUID  `json:"userId" binding:"required"`
@@ -44,4 +50,10 @@ type UserMatchOutcome struct {
 }
 
 const defaultGameID = "global"
-func ResolveGameID(gameID string) string { /* ... same as before ... */ }
+
+func ResolveGameID(gameID string) string {
+	if gameID == "" {
+		return defaultGameID
+	}
+	return gameID
+}
