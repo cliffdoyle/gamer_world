@@ -292,6 +292,7 @@ export const tournamentApi = {
   },
 
   getRecentActivities: async (token: string, page: number = 1, pageSize: number = 4): Promise<PaginatedActivitiesResponse> => {
+    console.log("Token being sent for /dashboard/activities:", token);
     const queryParams = new URLSearchParams({
         page: page.toString(),
         pageSize: pageSize.toString(),

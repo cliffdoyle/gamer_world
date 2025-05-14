@@ -18,7 +18,7 @@ export interface TournamentResponse {
   createdAt: string;
   updatedAt: string;
   rules: string;
-  prizePool?: Record<string, any>;
+  prizePool?: any;
   customFields?: Record<string, any>;
 }
 
