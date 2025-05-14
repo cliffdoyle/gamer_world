@@ -13,6 +13,28 @@ import (
 	"github.com/google/uuid"
 )
 
+// Define structs needed to talk to Ranking Service (mirroring Ranking Service's domain)
+// These might ideally live in a shared package or be part of a Ranking Service client.
+type RS_ResultType string
+const (
+    RS_Win  RS_ResultType = "WIN"
+    RS_Draw RS_ResultType = "DRAW"
+    RS_Loss RS_ResultType = "LOSS"
+)
+
+type RS_UserMatchOutcome struct {
+    UserID  uuid.UUID     `json:"userId"`
+    Outcome RS_ResultType `json:"outcome"`
+}
+
+type RS_MatchResultEvent struct {
+    GameID    string                `json:"gameId,omitempty"`
+    Users     []RS_UserMatchOutcome `json:"users"`
+    MatchID   uuid.UUID             `json:"matchId,omitempty"`
+    Timestamp time.Time             `json:"timestamp"`
+}
+
+
 // TournamentService defines methods for tournament business logic
 type TournamentService interface {
 	CreateTournament(
