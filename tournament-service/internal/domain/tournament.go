@@ -38,16 +38,16 @@ type Tournament struct {
 	Game                 string                 `json:"game"`
 	Format               TournamentFormat       `json:"format"`
 	Status               TournamentStatus       `json:"status"`
-	MaxParticipants      int                    `json:"max_participants"`
+	MaxParticipants      int                    `json:"maxParticipants"`
 	RegistrationDeadline *time.Time             `json:"registration_deadline"`
-	StartTime            *time.Time             `json:"start_time"`
-	EndTime              *time.Time             `json:"end_time"`
-	CreatedBy            uuid.UUID              `json:"created_by"`
-	CreatedAt            time.Time              `json:"created_at"`
-	UpdatedAt            time.Time              `json:"updated_at"`
+	StartTime            *time.Time             `json:"startTime"`
+	EndTime              *time.Time             `json:"endTime"`
+	CreatedBy            uuid.UUID              `json:"createdBy"`
+	CreatedAt            time.Time              `json:"createdAt"`
+	UpdatedAt            time.Time              `json:"updatedAt"`
 	Rules                string                 `json:"rules"`
-	PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
-    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
+	PrizePool            json.RawMessage `json:"prizePool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"customFields,omitempty"`// Assuming this is also flexible JSON
 }
 
 
@@ -57,12 +57,12 @@ type CreateTournamentRequest struct {
 	Description         string           `json:"description"`
 	Game                string           `json:"game" binding:"required"`
 	Format              TournamentFormat `json:"format"`
-	MaxParticipants     int              `json:"max_participants"`
-	RegistrationDeadline *time.Time      `json:"registration_deadline"`
-	StartTime           *time.Time       `json:"start_time"`
+	MaxParticipants     int              `json:"maxParticipants"`
+	RegistrationDeadline *time.Time      `json:"registrationDeadline"`
+	StartTime           *time.Time       `json:"startTime"`
 	Rules               string           `json:"rules"`
-	PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
-    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
+	PrizePool            json.RawMessage `json:"prizePool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"customFields,omitempty"`// Assuming this is also flexible JSON
 }
 
 // UpdateTournamentRequest represents the data for updating a tournament
@@ -71,12 +71,12 @@ type UpdateTournamentRequest struct {
 	Description         string           `json:"description"`
 	Game                string           `json:"game"`
 	Format              TournamentFormat `json:"format"`
-	MaxParticipants     int              `json:"max_participants"`
-	RegistrationDeadline *time.Time      `json:"registration_deadline"`
-	StartTime           *time.Time       `json:"start_time"`
+	MaxParticipants     int              `json:"maxParticipants"`
+	RegistrationDeadline *time.Time      `json:"registrationDeadline"`
+	StartTime           *time.Time       `json:"startTime"`
 	Rules               string           `json:"rules"`
-	PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
-    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
+	PrizePool            json.RawMessage `json:"prizePool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"customFields,omitempty"`// Assuming this is also flexible JSON
 }
 
 // TournamentResponse represents the data returned to clients
@@ -87,7 +87,7 @@ type TournamentResponse struct {
 	Game                string           `json:"game"`
 	Format              TournamentFormat `json:"format"`
 	Status              TournamentStatus `json:"status"`
-	MaxParticipants     int              `json:"max_participants"`
+	MaxParticipants     int              `json:"maxParticipants"`
 	CurrentParticipants int              `json:"currentParticipants"`
 	RegistrationDeadline *time.Time      `json:"registrationDeadline"`
 	StartTime           *time.Time       `json:"startTime"`
@@ -96,4 +96,5 @@ type TournamentResponse struct {
 	Rules               string           `json:"rules"`
     PrizePool            json.RawMessage `json:"prizePool,omitempty"` // <--- CHANGE THIS
     CustomFields         json.RawMessage `json:"customFields,omitempty"`// Assuming this is also flexible JSON
+	CreatedBy            uuid.UUID       `json:"createdBy"` 
 }
