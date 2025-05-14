@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -406,8 +408,21 @@ func main() {
 		// Existing protected tournament management routes
 		protected.POST("/tournaments", func(c *gin.Context) {
 			var req domain.CreateTournamentRequest
+
+			// --- START DEBUGGING BLOCK ---
+			jsonData, err := c.GetRawData()
+			if err != nil {
+				log.Printf("Error getting raw data: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read request body"})
+				return
+			}
+			log.Printf("Received RAW JSON for /tournaments: %s", string(jsonData))
+			// It's crucial to put raw data back for ShouldBindJSON to work after reading it
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
+			// --- END DEBUGGING BLOCK ---
 			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				log.Printf("Error binding JSON for /tournaments: %v. Received body: %s", err, string(jsonData)) // THIS LOG IS KEY
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"+err.Error()})
 				return
 			}
 			token := c.GetHeader("Authorization")
@@ -423,6 +438,9 @@ func main() {
 				return
 			}
 			creatorID := user.GetUserUUID()
+
+			  // Log the bound request struct
+			  log.Printf("Successfully bound CreateTournamentRequest: %+v", req)
 			tournament, err := tournamentService.CreateTournament(c.Request.Context(), &req, creatorID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
