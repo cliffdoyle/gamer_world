@@ -1,13 +1,12 @@
 // src/app/leaderboards/page.tsx
 'use client';
 
-import { useEffect, useState }
-from 'react';
-import { useAuth } from '@/contexts/AuthContext'; // To get token if needed
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { rankingApi } from '@/lib/api/ranking';
 import { LeaderboardEntry, PaginatedLeaderboardResponse } from '@/types/ranking';
-import ProtectedRoute from '@/components/auth/ProtectedRoute'; // If leaderboard is protected
-import Link from 'next/link';
+// import ProtectedRoute from '@/components/auth/ProtectedRoute'; // If leaderboard is protected
+import Link from 'next/link'; // Not used in this snippet, but keep if needed elsewhere
 
 export default function LeaderboardsPage() {
   const { token } = useAuth();
@@ -15,24 +14,25 @@ export default function LeaderboardsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [gameIdFilter, setGameIdFilter] = useState<string>(''); // Default to global or let user select
+  const [gameIdFilter, setGameIdFilter] = useState<string>('');
 
-  const PAGE_SIZE = 15; // Or make configurable
+  const PAGE_SIZE = 15;
 
   const fetchLeaderboard = async (page: number, gameId?: string) => {
-    if (!token) { // Assuming token might be needed for auth consistency, even if endpoint is public
-        // setError("Authentication token not found.");
-        // setIsLoading(false);
-        // return;
-    }
+    // No need to check token here if endpoint is public or rankingApi handles it
     setIsLoading(true);
     setError(null);
     try {
-      // Pass token if your rankingApi.getLeaderboard expects it
-      const data = await rankingApi.getLeaderboard(token || "dummy_token_if_public", gameId || undefined, page, PAGE_SIZE);
+      const data = await rankingApi.getLeaderboard(token || "dummy_token_if_public_or_ranking_api_handles_auth", gameId || undefined, page, PAGE_SIZE);
+      // Ensure leaderboard array exists, even if empty
+      if (data && !Array.isArray(data.leaderboard)) {
+        console.warn("API returned leaderboard data but 'leaderboard' field is not an array. Defaulting to empty.", data);
+        data.leaderboard = [];
+      }
       setLeaderboardData(data);
     } catch (err: any) {
       setError(err.message || "Failed to fetch leaderboard.");
+      setLeaderboardData(null); // Clear data on error
     } finally {
       setIsLoading(false);
     }
@@ -40,7 +40,7 @@ export default function LeaderboardsPage() {
 
   useEffect(() => {
     fetchLeaderboard(currentPage, gameIdFilter);
-  }, [currentPage, gameIdFilter, token]);
+  }, [currentPage, gameIdFilter, token]); // Added token dependency if fetchLeaderboard uses it
 
   const handlePreviousPage = () => {
     if (currentPage > 1) {
@@ -49,21 +49,18 @@ export default function LeaderboardsPage() {
   };
 
   const handleNextPage = () => {
-    if (leaderboardData && currentPage * PAGE_SIZE < leaderboardData.totalPlayers) {
-      setCurrentPage(prev => prev + 1);
+    if (leaderboardData && Array.isArray(leaderboardData.leaderboard) && currentPage * PAGE_SIZE < leaderboardData.totalPlayers) {
+      setCurrentPage(prev => prev - 1);
     }
   };
   
-  // Basic game filter input
   const handleGameFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Basic implementation, you might want a dropdown of available games
     setGameIdFilter(e.target.value);
   };
   const applyGameFilter = () => {
-    setCurrentPage(1); // Reset to first page on new filter
+    setCurrentPage(1);
     fetchLeaderboard(1, gameIdFilter);
   }
-
 
   return (
     // <ProtectedRoute> // Uncomment if this page needs auth
@@ -87,11 +84,11 @@ export default function LeaderboardsPage() {
             <button onClick={applyGameFilter} className="btn btn-sm bg-teal-500 hover:bg-teal-600 text-black">Apply Filter</button>
           </div>
 
-
           {isLoading && <div className="text-center py-10 text-gray-400">Loading leaderboard...</div>}
           {error && <div className="text-center py-10 text-red-400">Error: {error}</div>}
           
-          {!isLoading && !error && leaderboardData && leaderboardData.leaderboard.length > 0 && (
+          {/* CORRECTED CONDITIONAL RENDERING */}
+          {!isLoading && !error && leaderboardData && Array.isArray(leaderboardData.leaderboard) && leaderboardData.leaderboard.length > 0 && (
             <>
               <div className="overflow-x-auto bg-gray-950 border border-teal-500/30 rounded-lg shadow-lg">
                 <table className="min-w-full divide-y divide-gray-700">
@@ -107,7 +104,6 @@ export default function LeaderboardsPage() {
                       <tr key={entry.userId} className="hover:bg-gray-800/50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-teal-400">{entry.rank}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
-                          {/* Link to player profile if you have one */}
                           {entry.userName || `User ${entry.userId.substring(0,8)}...`}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{entry.score}</td>
@@ -117,7 +113,6 @@ export default function LeaderboardsPage() {
                 </table>
               </div>
 
-              {/* Pagination */}
               <div className="mt-6 flex justify-between items-center text-sm">
                 <button 
                   onClick={handlePreviousPage} 
@@ -127,11 +122,11 @@ export default function LeaderboardsPage() {
                   Previous
                 </button>
                 <span className="text-gray-400">
-                  Page {leaderboardData.page} of {Math.ceil(leaderboardData.totalPlayers / PAGE_SIZE)} (Total: {leaderboardData.totalPlayers} players)
+                  Page {leaderboardData.page} of {leaderboardData.totalPlayers > 0 ? Math.ceil(leaderboardData.totalPlayers / PAGE_SIZE) : 1} (Total: {leaderboardData.totalPlayers} players)
                 </span>
                 <button 
                   onClick={handleNextPage} 
-                  disabled={currentPage * PAGE_SIZE >= leaderboardData.totalPlayers || isLoading}
+                  disabled={!leaderboardData || !Array.isArray(leaderboardData.leaderboard) || currentPage * PAGE_SIZE >= leaderboardData.totalPlayers || isLoading}
                   className="btn btn-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-50"
                 >
                   Next
@@ -139,8 +134,9 @@ export default function LeaderboardsPage() {
               </div>
             </>
           )}
-          {!isLoading && !error && (!leaderboardData || leaderboardData.leaderboard.length === 0) && (
-            <div className="text-center py-10 text-gray-500">No players found on the leaderboard for this game.</div>
+          {/* CORRECTED CONDITIONAL RENDERING for "No players" */}
+          {!isLoading && !error && (!leaderboardData || !Array.isArray(leaderboardData.leaderboard) || leaderboardData.leaderboard.length === 0) && (
+            <div className="text-center py-10 text-gray-500">No players found on the leaderboard for this game, or data is unavailable.</div>
           )}
         </div>
       </div>
