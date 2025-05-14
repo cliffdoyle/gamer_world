@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,8 +46,8 @@ type Tournament struct {
 	CreatedAt            time.Time              `json:"created_at"`
 	UpdatedAt            time.Time              `json:"updated_at"`
 	Rules                string                 `json:"rules"`
-	PrizePool            map[string]interface{} `json:"prize_pool"`
-	CustomFields         map[string]interface{} `json:"custom_fields"`
+	PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
 }
 
 
@@ -60,8 +61,8 @@ type CreateTournamentRequest struct {
 	RegistrationDeadline *time.Time      `json:"registration_deadline"`
 	StartTime           *time.Time       `json:"start_time"`
 	Rules               string           `json:"rules"`
-	PrizePool           map[string]interface{} `json:"prize_pool"`
-	CustomFields        map[string]interface{} `json:"custom_fields"`
+	PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
 }
 
 // UpdateTournamentRequest represents the data for updating a tournament
@@ -74,8 +75,8 @@ type UpdateTournamentRequest struct {
 	RegistrationDeadline *time.Time      `json:"registration_deadline"`
 	StartTime           *time.Time       `json:"start_time"`
 	Rules               string           `json:"rules"`
-	PrizePool           map[string]interface{} `json:"prize_pool"`
-	CustomFields        map[string]interface{} `json:"custom_fields"`
+	PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
 }
 
 // TournamentResponse represents the data returned to clients
@@ -93,6 +94,6 @@ type TournamentResponse struct {
 	EndTime             *time.Time       `json:"end_time"`
 	CreatedAt           time.Time        `json:"created_at"`
 	Rules               string           `json:"rules"`
-	PrizePool           map[string]interface{} `json:"prize_pool"`
-	CustomFields        map[string]interface{} `json:"custom_fields"`
+    PrizePool            json.RawMessage `json:"prize_pool,omitempty"` // <--- CHANGE THIS
+    CustomFields         json.RawMessage `json:"custom_fields,omitempty"`// Assuming this is also flexible JSON
 }
