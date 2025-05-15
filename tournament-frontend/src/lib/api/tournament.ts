@@ -18,8 +18,10 @@ interface TournamentListResponse { // Existing response for getAllTournaments
   tournaments: TournamentResponse[]; // This uses your existing frontend Tournament type
 }
 
-interface AddParticipantRequest {
+interface AddParticipantApiPayload {
   participant_name: string;
+  user_id?: string; // Optional: UUID string of the platform user to link
+  seed?: number;
 }
 
 
@@ -163,19 +165,30 @@ export const tournamentApi = {
   },
 
   // Add participant to tournament
-  addParticipant: async (token: string, tournamentId: string, data: { name: string }): Promise<Participant> => {
-    console.log('API sending data for addParticipant:', {
-      participant_name: data.name
-    });
+   addParticipant: async (
+    token: string,
+    tournamentId: string,
+    data: { name: string; userIdToLink?: string; seed?: number } // Frontend will pass name and optionally userIdToLink
+  ): Promise<Participant> => {
+    const payload: AddParticipantApiPayload = {
+      participant_name: data.name.trim(),
+    };
+    if (data.userIdToLink) {
+      payload.user_id = data.userIdToLink;
+    }
+    if (data.seed !== undefined) {
+      payload.seed = data.seed;
+    }
+
+    console.log('API sending data for addParticipant:', payload);
+
     const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.PARTICIPANTS(tournamentId)}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        participant_name: data.name
-      }),
+      body: JSON.stringify(payload), // Send the modified payload
     });
 
     const responseData = await response.json();
@@ -188,7 +201,6 @@ export const tournamentApi = {
 
     return responseData;
   },
-
   // Get tournament matches
   getMatches: async (token: string, tournamentId: string): Promise<Array<Match>> => {
     try {
