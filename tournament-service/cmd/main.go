@@ -182,9 +182,12 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament ID"})
 			return
 		}
+
+		//Define expected request body
 		var req struct {
 			ParticipantName string `json:"participant_name" binding:"required"`
 			Seed            *int   `json:"seed,omitempty"`
+			UserID          *string `json:"user_id,omitempty"`          // Optional: UUID string of an existing platform user to link
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
