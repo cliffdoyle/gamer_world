@@ -46,6 +46,10 @@ func main() {
 		userRoutes.GET("/profile", handlers.GetUserProfile)
 		userRoutes.PUT("/profile", handlers.UpdateUserProfile)
 		userRoutes.DELETE("/account", handlers.DeleteUserAccount) // Changed from /profile to /account for clarity
+
+		//Added new routes for linking other services to get a list of users for linking 
+		//to tournament participants
+		userRoutes.GET("/list-for-linking", handlers.ListUsersForLinking)
 	}
 
 	port := os.Getenv("SERVER_PORT")
