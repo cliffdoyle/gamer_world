@@ -24,4 +24,15 @@ func ListUsersForLinking(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users: " + err.Error()})
 		return
 	}
+
+	//Map the users to a simple DTO
+	responseUsers:= make([]UserForLinking, len(users))
+	for i, user := range users {
+		responseUsers[i] = UserForLinking{
+			ID: user.ID,
+			Username: user.Username,
+			DisplayName: user.DisplayName,
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"users": responseUsers})
 }
