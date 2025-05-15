@@ -10,6 +10,7 @@ export const API_CONFIG = {
     REGISTER: '/auth/register',
     GOOGLE_SIGN_IN: '/auth/google/signin',
     PROFILE: '/user/profile', // Used for getProfile and updateProfile
+    USERS_FOR_LINKING: '/user/list-for-linking', // Used for getUsersForLinking
 
     // Tournament Service Endpoints (via BASE_URL)
     TOURNAMENTS: '/tournaments',
