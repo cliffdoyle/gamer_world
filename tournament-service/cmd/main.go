@@ -190,10 +190,30 @@ func main() {
 			UserID          *string `json:"user_id,omitempty"`          // Optional: UUID string of an existing platform user to link
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			log.Printf("[AddParticipantHandler] Error binding JSON: %v. Request Body: %s", err, getRawBody(c))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload:" + err.Error()})
 			return
 		}
+
+		log.Printf("[AddParticipantHandler] Received request to add participant: Name='%s', UserID_from_req='%v', Seed=%v",
+			req.ParticipantName, req.UserID, req.Seed)
+
 		participantReq := &domain.ParticipantRequest{ParticipantName: req.ParticipantName, Seed: req.Seed}
+		if req.UserID != nil && *req.UserID != "" {
+			parsedUserUUID,uuidErr:= uuid.Parse(*req.UserID)
+			if uuidErr != nil {
+				log.Printf("[AddParticipantHandler] Invalid UserID format provided ('%s'). Error: %v. Adding as guest.", *req.UserID, uuidErr)
+				participantReq.UserID = nil // Reset to nil if invalid UUID
+		}else{
+			//Valid UUID string provided, link this participant entry to the system user
+			participantReq.UserID = &parsedUserUUID
+			log.Printf("[AddParticipantHandler] Linking participant '%s' to existing system UserID: %s", req.ParticipantName, parsedUserUUID.String())
+		}
+	}else{
+		// No UserID provided, treat as guest
+		log.Printf("[AddParticipantHandler] No UserID provided, treating participant '%s' as guest.", req.ParticipantName)
+		participantReq.UserID = nil
+	}
 		token := c.GetHeader("Authorization")
 		if token != "" && len(token) > 7 {
 			token = token[7:]
@@ -205,9 +225,12 @@ func main() {
 		}
 		participant, err := tournamentService.RegisterParticipant(c.Request.Context(), tournamentID, participantReq)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			log.Printf("[AddParticipantHandler] Error calling tournamentService.RegisterParticipant: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register participant"+err.Error()})
 			return
 		}
+		log.Printf("[AddParticipantHandler] Successfully registered participant: ID=%s, Name='%s', Linked_UserID=%v",
+			participant.ID.String(), participant.ParticipantName, participant.UserID)
 		c.JSON(http.StatusCreated, participant)
 	})
 
@@ -656,4 +679,14 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// Helper function to get raw body for logging (optional, but useful for debugging JSON binding)
+func getRawBody(c *gin.Context) string {
+    bodyBytes, err := io.ReadAll(c.Request.Body)
+    if err != nil {
+        return fmt.Sprintf("error reading body: %v", err)
+    }
+    c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes)) // Important: Restore the body for further processing
+    return string(bodyBytes)
 }
