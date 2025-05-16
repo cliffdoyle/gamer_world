@@ -1,10 +1,10 @@
 // src/components/tournament/RoundRobinTable.tsx
 import React from 'react';
-import { Tournament, Match as MatchType, Participant as ParticipantType } from '@/types/tournament';
+import { TournamentResponse, Match as MatchType, Participant as ParticipantType } from '@/types/tournament';
 import { CheckCircleIcon, XCircleIcon, PencilSquareIcon } from '@heroicons/react/24/outline'; // Ensure this import path is correct for your project
 
 interface RoundRobinTableProps {
-  tournament: Tournament;
+  tournament: TournamentResponse;
   matches: MatchType[];
   participants: ParticipantType[];
   onMatchClick?: (match: MatchType) => void;
