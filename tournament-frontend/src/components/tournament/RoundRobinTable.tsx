@@ -52,11 +52,13 @@ const RoundRobinTable: React.FC<RoundRobinTableProps> = ({
 
             if (match.status === 'COMPLETED') {
                 gamesPlayed++;
-                if (match.winner_id === participant.id) {
-                    wins++;
-                } else if (match.winner_id === null) { // A draw is when winner_id is null for a completed match
+                const isDraw =match.score_participant1 === match.score_participant2;
+                if (isDraw) {
                     draws++;
-                } else if (match.winner_id !== null && match.winner_id !== participant.id) { // Winner is someone else
+                } else if (match.winner_id==participant.id) { // A draw is when winner_id is null for a completed match
+                wins++;
+                } else{ 
+                       // If not a draw and not a win, it must be a loss
                     losses++;
                 }
             }

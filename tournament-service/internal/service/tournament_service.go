@@ -840,7 +840,9 @@ func (s *tournamentService) UpdateMatchScore(
 
 	// Update scores from request
 	match.ScoreParticipant1 = request.ScoreParticipant1
+	fmt.Println("Score P1: ", match.ScoreParticipant1)
 	match.ScoreParticipant2 = request.ScoreParticipant2
+	fmt.Println("Score P2: ", match.ScoreParticipant2)
 	if request.MatchNotes != "" {
 		match.MatchNotes = request.MatchNotes
 	}
@@ -879,10 +881,13 @@ func (s *tournamentService) UpdateMatchScore(
 
 	// Update match record
 	match.Status = domain.MatchCompleted
+	fmt.Println("Match Status: ", match.Status)	
 	now := time.Now()
 	match.CompletedTime = &now
 	match.WinnerID = determinedWinnerID // Can be nil for draws
+	fmt.Println("Match WinnerID: ", match.WinnerID)
 	match.LoserID = determinedLoserID   // Can be nil for draws
+	fmt.Println("Match LoserID: ", match.LoserID)
 
 	err = s.matchRepo.Update(ctx, match)
 	if err != nil {
