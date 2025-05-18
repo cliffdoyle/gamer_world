@@ -1,7 +1,7 @@
-// src/components/tournament/RoundRobinTable.tsx
+// Updated RoundRobinTable.tsx with Goal Difference column
 import React from 'react';
 import { TournamentResponse, Match as MatchType, Participant as ParticipantType } from '@/types/tournament';
-import { CheckCircleIcon, XCircleIcon, PencilSquareIcon } from '@heroicons/react/24/outline'; // Ensure this import path is correct for your project
+import { CheckCircleIcon, XCircleIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 
 interface RoundRobinTableProps {
   tournament: TournamentResponse;
@@ -35,14 +35,30 @@ const RoundRobinTable: React.FC<RoundRobinTableProps> = ({
     return participantsMap.get(id)?.participant_name || 'Unknown Participant';
   };
 
+  // Calculate goal difference for a participant
+  const calculateGoalDifference = (participantId: string): number => {
+    return matches.reduce((diff, match) => {
+      if (match.status !== 'COMPLETED') return diff;
+      
+      if (match.participant1_id === participantId) {
+        return diff + ((match.score_participant1 || 0) - (match.score_participant2 || 0));
+      }
+      if (match.participant2_id === participantId) {
+        return diff + ((match.score_participant2 || 0) - (match.score_participant1 || 0));
+      }
+      return diff;
+    }, 0);
+  };
+
   // Calculate Standings
   const standings = React.useMemo(() => {
-    // console.log("RRTable: Recalculating standings with matches:", matches); // For debugging
     return participants.map(participant => {
         let wins = 0;
         let losses = 0;
         let draws = 0;
         let gamesPlayed = 0;
+        let goalsFor = 0;
+        let goalsAgainst = 0;
 
         matches.forEach(match => {
             // Ensure the match involves the current participant
@@ -52,35 +68,52 @@ const RoundRobinTable: React.FC<RoundRobinTableProps> = ({
 
             if (match.status === 'COMPLETED') {
                 gamesPlayed++;
-                const isDraw =match.score_participant1 === match.score_participant2;
+                
+                // Explicitly check for draw condition first
+                const isDraw = match.score_participant1 === match.score_participant2;
+                
+                // Calculate goals for/against
+                if (match.participant1_id === participant.id) {
+                    goalsFor += (match.score_participant1 || 0);
+                    goalsAgainst += (match.score_participant2 || 0);
+                } else {
+                    goalsFor += (match.score_participant2 || 0);
+                    goalsAgainst += (match.score_participant1 || 0);
+                }
+                
                 if (isDraw) {
                     draws++;
-                } else if (match.winner_id==participant.id) { // A draw is when winner_id is null for a completed match
-                wins++;
-                } else{ 
-                       // If not a draw and not a win, it must be a loss
+                } else if (match.winner_id === participant.id) {
+                    wins++;
+                } else {
+                    // If not a draw and not a win, it must be a loss
                     losses++;
                 }
             }
         });
+        
+        const goalDifference = goalsFor - goalsAgainst;
         const points = (wins * 3) + (draws * 1); // 3 for win, 1 for draw
-        return { ...participant, gamesPlayed, wins, losses, draws, points };
+        
+        return { 
+            ...participant, 
+            gamesPlayed, 
+            wins, 
+            losses, 
+            draws, 
+            points,
+            goalsFor,
+            goalsAgainst,
+            goalDifference
+        };
     }).sort((a, b) => {
-        if (b.points !== a.points) return b.points - a.points; // Primary: points
-        if (b.wins !== a.wins) return b.wins - a.wins;         // Secondary: wins
-        // Optional tie-breaker: Goal Difference
-        const scoreDiff = (p: typeof a) => matches.reduce((diff, m) => {
-            if(m.status === 'COMPLETED'){
-                if (m.participant1_id === p.id) return diff + ((m.score_participant1 || 0) - (m.score_participant2 || 0));
-                if (m.participant2_id === p.id) return diff + ((m.score_participant2 || 0) - (m.score_participant1 || 0));
-            }
-            return diff;
-        }, 0);
-        if (scoreDiff(b) !== scoreDiff(a)) return scoreDiff(b) - scoreDiff(a);
-        return a.participant_name.localeCompare(b.participant_name); // Tertiary: alphabetical by name
+        if (b.points !== a.points) return b.points - a.points;       // Primary: points
+        if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference; // Secondary: goal difference
+        if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor; // Tertiary: goals scored
+        if (b.wins !== a.wins) return b.wins - a.wins;               // Fourth: wins
+        return a.participant_name.localeCompare(b.participant_name); // Last: alphabetical by name
     });
   }, [matches, participants, participantsMap]); // Dependencies for standings
-
 
   const matchesByRound = React.useMemo(() => {
     return matches.reduce((acc, match) => {
@@ -114,6 +147,9 @@ const RoundRobinTable: React.FC<RoundRobinTableProps> = ({
                     <th className="text-center">W</th>
                     <th className="text-center">L</th>
                     <th className="text-center">D</th>
+                    <th className="text-center">GF</th>
+                    <th className="text-center">GA</th>
+                    <th className="text-center">GD</th>
                     <th className="text-center">Pts</th>
                 </tr>
                 </thead>
@@ -126,11 +162,18 @@ const RoundRobinTable: React.FC<RoundRobinTableProps> = ({
                     <td className="py-2 px-3 text-center text-green-400">{s.wins}</td>
                     <td className="py-2 px-3 text-center text-red-400">{s.losses}</td>
                     <td className="py-2 px-3 text-center text-yellow-400">{s.draws}</td>
+                    <td className="py-2 px-3 text-center">{s.goalsFor}</td>
+                    <td className="py-2 px-3 text-center">{s.goalsAgainst}</td>
+                    <td className="py-2 px-3 text-center font-medium">
+                      <span className={s.goalDifference > 0 ? 'text-green-400' : s.goalDifference < 0 ? 'text-red-400' : 'text-slate-300'}>
+                        {s.goalDifference > 0 ? '+' : ''}{s.goalDifference}
+                      </span>
+                    </td>
                     <td className="py-2 px-3 text-center font-bold text-slate-100">{s.points}</td>
                     </tr>
                 ))}
                 {standings.length === 0 && (
-                    <tr><td colSpan={7} className="text-center italic py-4 text-slate-500">No completed matches yet to display standings.</td></tr>
+                    <tr><td colSpan={10} className="text-center italic py-4 text-slate-500">No completed matches yet to display standings.</td></tr>
                 )}
                 </tbody>
             </table>
