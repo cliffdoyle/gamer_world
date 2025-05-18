@@ -430,8 +430,24 @@ func isValidStatusTransition(from, to domain.TournamentStatus) bool {
 func (s *tournamentService) RegisterParticipant(
 	ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest,
 ) (*domain.Participant, error) {
+	 // --- ADD THIS CHECK ---
+    // Check if a participant with this UserID is already registered for this tournament
+    exists, err := s.participantRepo.ExistsByTournamentIDAndUserID(ctx, tournamentID, *request.UserID)
+    if err != nil {
+        // Handle potential database query errors (e.g., transient connection issues)
+        return nil, fmt.Errorf("failed to check for existing participant: %w", err)
+    }
+    if exists {
+        // Return a specific error if the user is already a participant
+        // You should define a custom error type like domain.ErrAlreadyParticipant
+        return nil, domain.ErrAlreadyParticipant // Or return a more generic error if you prefer
+    }
+    // --- END OF CHECK ---
+
+    // Create participant
 	// Create participant
 	participant := &domain.Participant{
+		
 		ID:              uuid.New(),
 		TournamentID:    tournamentID,
 		UserID:          request.UserID,
@@ -443,7 +459,7 @@ func (s *tournamentService) RegisterParticipant(
 	}
 
 	// Save to database
-	err := s.participantRepo.Create(ctx, participant)
+	err = s.participantRepo.Create(ctx, participant)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register participant: %w", err)
 	}
