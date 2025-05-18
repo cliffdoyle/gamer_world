@@ -58,7 +58,7 @@ func (r *participantRepository) ExistsByTournamentIDAndUserID(ctx context.Contex
     // Use a COUNT query to efficiently check for existence
     query := `
         SELECT COUNT(*)
-        FROM participants
+        FROM tournament_participants
         WHERE tournament_id = $1 AND user_id = $2
     ` // Use $1, $2 for PostgreSQL, or ?,? for MySQL/SQLite
 
