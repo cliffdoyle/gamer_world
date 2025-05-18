@@ -479,8 +479,6 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                     {/* View mode tabs moved here, original responsive classes kept */}
                     {(tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') && matches.length > 0 && (
                         <div className="tabs tabs-boxed tabs-xs sm:tabs-sm bg-slate-700/50 p-0.5">
-                            {/* <button className={`tab text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-md ${viewMode === 'bracket' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-600/70'}`} onClick={() => setViewMode('bracket')}><TableCellsIcon className="h-3.5 sm:h-4 w-3.5 sm:w-4 mr-1"/>Bracket</button>
-                            <button className={`tab text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-md ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-600/70'}`} onClick={() => setViewMode('list')}><ListBulletIcon className="h-3.5 sm:h-4 w-3.5 sm:w-4 mr-1"/>List</button> */}
                         </div>
                     )}
                   </div>
