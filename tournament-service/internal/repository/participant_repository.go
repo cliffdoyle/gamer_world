@@ -21,6 +21,7 @@ type ParticipantRepository interface {
 	UpdateSeed(ctx context.Context, id uuid.UUID, seed int) error
 	CheckIn(ctx context.Context, id uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	 ExistsByTournamentIDAndUserID(ctx context.Context, tournamentID, userID uuid.UUID) (bool, error)
 }
 
 // participantRepository implements ParticipantRepository interface
@@ -31,6 +32,49 @@ type participantRepository struct {
 // NewParticipantRepository creates a new participant repository
 func NewParticipantRepository(db *sql.DB) ParticipantRepository {
 	return &participantRepository{db: db}
+}
+
+// Assuming your repository struct looks like this (note the type is *sql.DB):
+// import (
+//    "database/sql" // Standard SQL import
+// )
+// type ParticipantRepository struct {
+//     db *sql.DB // This is a standard sql.DB pointer
+// }
+
+
+// In your ExistsByTournamentIDAndUserID implementation:
+// Import necessary packages:
+// import (
+// 	"context"
+// 	"database/sql" // Import the standard sql package
+// 	"fmt"
+// 	"github.com/google/uuid" // assuming uuid
+// 	// Replace domain path with your actual domain package path
+//     "your_project_path/internal/domain"
+// )
+
+func (r *participantRepository) ExistsByTournamentIDAndUserID(ctx context.Context, tournamentID, userID uuid.UUID) (bool, error) {
+    // Use a COUNT query to efficiently check for existence
+    query := `
+        SELECT COUNT(*)
+        FROM participants
+        WHERE tournament_id = $1 AND user_id = $2
+    ` // Use $1, $2 for PostgreSQL, or ?,? for MySQL/SQLite
+
+    var count int
+    // Use QueryRowContext for queries expected to return at most one row
+    err := r.db.QueryRowContext(ctx, query, tournamentID, userID).Scan(&count)
+
+    if err != nil {
+        // sql.ErrNoRows specifically is NOT an error for COUNT(*),
+        // COUNT(*) always returns a row, even if it's 0.
+        // So any error here is a genuine database error.
+        return false, fmt.Errorf("database query failed: %w", err)
+    }
+
+    // If count > 0, a record exists
+    return count > 0, nil
 }
 
 // Create inserts a new participant into the database
