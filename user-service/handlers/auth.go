@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"log"
 
 	"github.com/cliffdoyle/gamer_world/user-service/database"
 	"github.com/cliffdoyle/gamer_world/user-service/models"
@@ -59,6 +60,7 @@ func Register(c *gin.Context) {
 	newUser.Password = hashedPassword
 
 	if err := database.DB.Create(&newUser).Error; err != nil {
+		 log.Printf("FATAL error creating user '%s': %v", newUser.Username, err)
 		if strings.Contains(err.Error(), "duplicate key") {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
