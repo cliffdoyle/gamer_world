@@ -355,14 +355,66 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
               </div>
             </div>
             <div className="flex-shrink-0 flex items-center gap-2 w-full sm:w-auto">
-              <button
-                onClick={handleGenerateBracket}
-                className="btn btn-sm bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold w-full sm:w-auto shadow-lg disabled:opacity-60 disabled:saturate-50 disabled:cursor-not-allowed"
-                disabled={!canGenerateBracket}
-              >
-                <BoltIcon className="h-4 w-4 mr-1.5"/>
-                {isGenerating ? "Generating..." : (matches.length > 0 ? "Bracket Generated" : "Generate Bracket")}
-              </button>
+             {/* // REPLACE WITH FIFA-STYLED BUTTON: (from fifa-generate-button artifact) */}
+<button
+  onClick={handleGenerateBracket}
+  disabled={!canGenerateBracket}
+  className={`
+    relative flex items-center justify-center
+    px-5 py-2.5 w-full sm:w-auto
+    rounded-md overflow-hidden
+    font-bold text-sm tracking-wider
+    transition-all duration-300 transform hover:scale-105
+    ${isGenerating 
+      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' 
+      : matches.length > 0 
+        ? 'bg-gradient-to-r from-green-600 to-emerald-500 text-white' 
+        : 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white'}
+    disabled:opacity-60 disabled:saturate-50 disabled:cursor-not-allowed disabled:hover:scale-100
+    shadow-lg hover:shadow-xl
+  `}
+>
+  {/* Animated background effect */}
+  <div className={`absolute inset-0 w-full h-full bg-black opacity-10 
+    ${isGenerating ? 'animate-pulse' : ''}`}></div>
+  
+  {/* Icon */}
+  <div className="relative z-10 mr-2">
+    <BoltIcon className={`h-4 w-4 ${isGenerating ? 'animate-bounce' : ''}`} />
+  </div>
+  
+  {/* Text */}
+  <span className="relative z-10">
+    {isGenerating ? "GENERATING..." : (matches.length > 0 ? "BRACKET GENERATED" : "GENERATE BRACKET")}
+  </span>
+  
+  {/* FIFA-like animated accents */}
+  <div className={`
+    absolute bottom-0 left-0 h-1.5 
+    ${isGenerating 
+      ? 'bg-yellow-300 w-full animate-pulse' 
+      : matches.length > 0 
+        ? 'bg-green-300 w-full' 
+        : 'bg-violet-300 w-full animate-pulse'}
+    transition-all duration-500 ease-out
+  `}></div>
+  
+  {/* Side accent */}
+  <div className={`
+    absolute top-0 right-0 h-full w-1.5
+    ${isGenerating 
+      ? 'bg-yellow-300/50' 
+      : matches.length > 0 
+        ? 'bg-green-300/50' 
+        : 'bg-violet-300/50'}
+    transition-all duration-500 ease-out
+  `}></div>
+  
+  {/* Diagonal pattern for FIFA-like aesthetic */}
+  <div className="absolute inset-0 opacity-10">
+    <div className="absolute inset-0 bg-black/20 rotate-45 transform-gpu scale-150"></div>
+  </div>
+</button>
             </div>
           </div>
           
@@ -553,14 +605,54 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                                "The matches for this tournament have not been generated yet."}
                           </p>
                            {!matches.length && canGenerateBracket && !error &&
-                              <button 
-                                onClick={handleGenerateBracket} 
-                                className="btn btn-md bg-blue-600 hover:bg-blue-700 text-white shadow-lg disabled:opacity-50 disabled:saturate-50 disabled:cursor-not-allowed"
-                                disabled={!canGenerateBracket || isGenerating}
-                              >
-                                <BoltIcon className="h-5 w-5 mr-2"/> 
-                                {isGenerating ? 'Generating...' : 'Generate Bracket Now'}
-                              </button>
+                         
+// REPLACE WITH LARGER FIFA-STYLED BUTTON: (from fifa-generate-button-large artifact)
+<button 
+  onClick={handleGenerateBracket} 
+  disabled={!canGenerateBracket || isGenerating}
+  className={`
+    relative flex items-center justify-center
+    px-6 py-3
+    rounded-md overflow-hidden
+    font-bold text-base tracking-wider
+    transition-all duration-300 transform hover:scale-105
+    ${isGenerating 
+      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' 
+      : 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white'}
+    disabled:opacity-60 disabled:saturate-50 disabled:cursor-not-allowed disabled:hover:scale-100
+    shadow-lg hover:shadow-xl
+  `}
+>
+  {/* Animated background effect */}
+  <div className={`absolute inset-0 w-full h-full bg-black opacity-10 
+    ${isGenerating ? 'animate-pulse' : ''}`}></div>
+  
+  {/* Icon */}
+  <div className="relative z-10 mr-2">
+    <BoltIcon className={`h-5 w-5 ${isGenerating ? 'animate-bounce' : ''}`} />
+  </div>
+  
+  {/* Text */}
+  <span className="relative z-10">
+    {isGenerating ? 'GENERATING...' : 'GENERATE BRACKET NOW'}
+  </span>
+  
+  {/* FIFA-like animated accents */}
+  <div className={`
+    absolute bottom-0 left-0 h-1.5 
+    bg-violet-300
+    transition-all duration-500 ease-out
+    w-full animate-pulse
+  `}></div>
+  
+  {/* Side accent */}
+  <div className="absolute top-0 right-0 h-full w-1.5 bg-violet-300/50"></div>
+  
+  {/* Diagonal pattern for FIFA-like aesthetic */}
+  <div className="absolute inset-0 opacity-10">
+    <div className="absolute inset-0 bg-black/20 rotate-45 transform-gpu scale-150"></div>
+  </div>
+</button>
                            }
                       </div>
                   )}
