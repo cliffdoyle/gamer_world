@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useAuth } from '@/contexts/AuthContext'; // Assuming registerUser might be in useAuth
 import Head from 'next/head';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
+import { authApi } from '@/lib/api/auth'; // Import your authApi
 
 interface FormData {
   username: string; // Added username
@@ -55,9 +56,15 @@ const SignupPage = () => {
     try {
       // TODO: Implement your register API call here using formData.username, formData.email, formData.password
       // Example: await registerUser(formData.username, formData.email, formData.password);
-      console.log('Registering user:', formData);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    // Implement your actual register API call:
+            console.log('Attempting to register user:', formData.username);
+           const responseData = await authApi.register(formData);
+
+            // Assuming a successful response means the user was created and the token is returned
+            // If your auth context has a 'register' function that also handles login/setting state, call that instead.
+            // If not, you might want to automatically log the user in or redirect to login.
+             console.log('Registration successful for user:', responseData.user.username);
+             // Redirect to login, maybe showing a success message
       router.push('/login?registered=true');
     } catch (err: any) {
       setError((err && err.message) || 'Registration failed. Please try again.');
