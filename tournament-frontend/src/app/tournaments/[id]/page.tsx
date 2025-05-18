@@ -387,13 +387,57 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
                    <div className="card-body p-4">
                       <div className="flex justify-between items-center mb-2">
                           <h2 className="card-title text-base !mb-0 text-slate-200">Participants ({participants.length} / {tournament.maxParticipants > 0 ? tournament.maxParticipants : 'Open'})</h2>
-                          <button 
-                            className="btn btn-xs bg-blue-500 hover:bg-blue-600 border-blue-600 text-white shadow disabled:opacity-50 disabled:saturate-50 disabled:cursor-not-allowed" 
-                            onClick={() => { setIsAddingParticipant(!isAddingParticipant); setError(null); setSuccessMessage(null); setParticipantSearchText(''); setParticipantDisplayName(''); setSelectedUserForParticipant(null); setShowSuggestions(false); }}
-                            disabled={!canAddParticipants}
-                          >
-                            <PlusIcon className="h-3.5 w-3.5 mr-1"/> {isAddingParticipant ? 'Cancel Adding' : 'Add Participant'}
-                          </button>
+                          
+{/* // Replace it with this enhanced FIFA-styled button: */}
+<button
+  onClick={() => { 
+    setIsAddingParticipant(!isAddingParticipant); 
+    setError(null); 
+    setSuccessMessage(null); 
+    setParticipantSearchText(''); 
+    setParticipantDisplayName(''); 
+    setSelectedUserForParticipant(null); 
+    setShowSuggestions(false); 
+  }}
+  disabled={!canAddParticipants}
+  className={`
+    relative flex items-center justify-center
+    px-4 py-1.5 
+    rounded-md overflow-hidden
+    font-bold text-xs tracking-wider
+    transition-all duration-300 transform hover:scale-105
+    ${isAddingParticipant 
+      ? 'bg-gradient-to-r from-red-600 to-red-700 text-white' 
+      : 'bg-gradient-to-r from-blue-600 to-teal-500 text-white'}
+    disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+    shadow-lg hover:shadow-xl
+  `}
+>
+  {/* Animated background effect */}
+  <div className={`absolute inset-0 w-full h-full bg-black opacity-10 
+    ${isAddingParticipant ? 'animate-pulse' : ''}`}></div>
+  
+  {/* Icon - using your existing PlusIcon */}
+  <div className="mr-1.5">
+    {isAddingParticipant 
+      ? <span className="w-3.5 h-3.5">✕</span> 
+      : <PlusIcon className="w-3.5 h-3.5" />
+    }
+  </div>
+  
+  {/* Text */}
+  <span className="relative z-10">
+    {isAddingParticipant ? 'CANCEL ADDING' : 'ADD PARTICIPANT'}
+  </span>
+  
+  {/* FIFA-like animated accent */}
+  <div className={`
+    absolute bottom-0 left-0 h-1 
+    bg-yellow-400
+    transition-all duration-500 ease-out
+    ${isAddingParticipant ? 'w-1/3' : 'w-full animate-pulse'}
+  `}></div>
+</button>
                       </div>
                       
                       {isAddingParticipant && canAddParticipants && (
