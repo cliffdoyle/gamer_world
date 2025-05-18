@@ -6,19 +6,45 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { tournamentApi } from '@/lib/api/tournament';
 import { userApi, UserForLinkingResponse } from '@/lib/api/user';
-import { Tournament, Participant, Match } from '@/types/tournament';
+//Add TournamentFormatType
+import { TournamentFormat } from '@/types/tournament';
+import { TournamentResponse, Participant, Match } from '@/types/tournament';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import BracketRenderer from '@/components/tournament/BracketRenderer';
 import EliminationStatsTable from '@/components/tournament/EliminationStatsTable';
-import { ArrowLeftIcon, PlusIcon, BoltIcon, TableCellsIcon, ListBulletIcon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, BoltIcon, TableCellsIcon, ListBulletIcon, UserCircleIcon,Squares2X2Icon } from '@heroicons/react/24/outline';
 import useDebounce from '@/hooks/useDebounce';
+
+
+// --- START OF NEW CODE TO ADD ---
+// Helper function to get a display-friendly format name
+const getBracketTitle = (format: TournamentFormat | undefined): string => {
+  if (!format) return "Tournament Details"; // Fallback if format is not yet loaded
+  switch (format) {
+    case 'SINGLE_ELIMINATION':
+      return "Single Elimination Bracket";
+    case 'DOUBLE_ELIMINATION':
+      return "Double Elimination Bracket";
+    case 'ROUND_ROBIN':
+      return "Round Robin Group Stage";
+    case 'SWISS':
+      return "Swiss Rounds";
+    default:
+      // For any new or unhandled formats, create a title from the format enum value
+      const formattedName = format.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      return formattedName;
+  }
+};
+// --- END OF NEW CODE TO ADD ---
+
+
 
 export default function TournamentDetailPage({ params }: { params: { id: string } }) {
   const { id: tournamentId } = params;
   const router = useRouter();
   const { token } = useAuth();
 
-  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [tournament, setTournament] = useState<TournamentResponse | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -280,7 +306,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     } catch (e) { console.error("Date Parse Error in formatDateTime:", dateString, e); return 'Invalid Date Format'; } 
   };
 
-  const isEffectivelyRegistrationPhase = (currentTournament: Tournament | null): boolean => { 
+  const isEffectivelyRegistrationPhase = (currentTournament: TournamentResponse | null): boolean => { 
     if (!currentTournament) return false; 
     const now = new Date(); 
     const deadline = currentTournament.registrationDeadline ? new Date(currentTournament.registrationDeadline) : null; 
@@ -435,22 +461,32 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
               </div>
           </div>
 
-          {/* Bracket/Matches Rendering */}
+          {/* Stats Table for Elimination */}
           {matches.length > 0 && tournament && (tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') && (
              <div className="my-6 md:my-8">
                 <EliminationStatsTable tournament={tournament} participants={participants} matches={matches} />
              </div>
           )}
+          {/* Bracket/Matches Rendering Section */}
           <div className="card bg-slate-800 shadow-2xl backdrop-blur-sm border border-slate-700/50">
-              <div className="card-body p-1 py-3 sm:p-2 md:p-4">
-                  {(tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') && matches.length > 0 && (
-                     <div className="flex justify-center sm:justify-end mb-4">
-                        <div className="tabs tabs-boxed tabs-sm bg-slate-700/50 p-0.5">
-                            <a className={`tab text-xs px-3 py-1.5 ${viewMode === 'bracket' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-600/70'}`} onClick={() => setViewMode('bracket')}><TableCellsIcon className="h-4 w-4 mr-1"/>Bracket</a>
-                            <a className={`tab text-xs px-3 py-1.5 ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-600/70'}`} onClick={() => setViewMode('list')}><ListBulletIcon className="h-4 w-4 mr-1"/>List</a>
+            <div className="card-body p-1 py-3 sm:p-2 md:p-4">
+                            {/* --- START OF MODIFIED SECTION FOR BRACKET TITLE --- */}
+               <div className="flex flex-col sm:flex-row justify-between items-center mb-4 px-1 sm:px-2 gap-2">
+                    <h2 className="text-lg sm:text-xl font-semibold text-slate-100 inline-flex items-center whitespace-nowrap">
+                        <Squares2X2Icon className="h-5 w-5 mr-2 text-sky-400 flex-shrink-0"/>
+                        {getBracketTitle(tournament?.format)} {/* Using the helper function */}
+                    </h2>
+                    {/* View mode tabs moved here, original responsive classes kept */}
+                    {(tournament.format === 'SINGLE_ELIMINATION' || tournament.format === 'DOUBLE_ELIMINATION') && matches.length > 0 && (
+                        <div className="tabs tabs-boxed tabs-xs sm:tabs-sm bg-slate-700/50 p-0.5">
+                            {/* <button className={`tab text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-md ${viewMode === 'bracket' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-600/70'}`} onClick={() => setViewMode('bracket')}><TableCellsIcon className="h-3.5 sm:h-4 w-3.5 sm:w-4 mr-1"/>Bracket</button>
+                            <button className={`tab text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-md ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-600/70'}`} onClick={() => setViewMode('list')}><ListBulletIcon className="h-3.5 sm:h-4 w-3.5 sm:w-4 mr-1"/>List</button> */}
                         </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  {/* --- END OF MODIFIED SECTION FOR BRACKET TITLE --- */}
+
+                  {/* The rest of this section (isLoading, BracketRenderer, placeholders) remains UNCHANGED from your original code */}
                   
                   {isLoading && matches.length === 0 && participants.length < 2 && !error ? 
                     <div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-400"></div></div> :
