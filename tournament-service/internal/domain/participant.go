@@ -2,9 +2,13 @@ package domain
 
 import (
 	"time"
+	"errors"
 
 	"github.com/google/uuid"
 )
+
+// internal/domain/errors.go (or similar)
+var ErrAlreadyParticipant = errors.New("user is already a participant in this tournament")
 
 // ParticipantStatus defines the current state of a participant
 type ParticipantStatus string
