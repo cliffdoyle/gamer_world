@@ -1,9 +1,9 @@
 // src/components/tournament/EliminationStatsTable.tsx
 import React from 'react';
-import { Match, Participant, Tournament } from '@/types/tournament';
+import { Match, Participant, TournamentResponse } from '@/types/tournament';
 
 interface EliminationStatsTableProps {
-  tournament: Tournament;
+  tournament: TournamentResponse;
   participants: Participant[];
   matches: Match[];
 }
@@ -19,26 +19,42 @@ const EliminationStatsTable: React.FC<EliminationStatsTableProps> = ({
         let wins = 0;
         let losses = 0;
         let matchesPlayed = 0;
+        let goalsFor = 0;
+        let goalsAgainst = 0;
 
         matches.forEach(match => {
           if (match.status === 'COMPLETED' &&
               (match.participant1_id === participant.id || match.participant2_id === participant.id)) {
             matchesPlayed++;
+            
+            // Calculate goals for and against
+            if (match.participant1_id === participant.id) {
+              goalsFor += match.score_participant1 || 0;
+              goalsAgainst += match.score_participant2 || 0;
+            } else if (match.participant2_id === participant.id) {
+              goalsFor += match.score_participant2 || 0;
+              goalsAgainst += match.score_participant1 || 0;
+            }
+            
             if (match.winner_id === participant.id) {
               wins++;
-            } else if (match.winner_id !== null && match.winner_id !== participant.id) { // Explicitly a loss if there was a winner and it wasn't this participant
+            } else if (match.winner_id !== null && match.winner_id !== participant.id) { 
+              // Explicitly a loss if there was a winner and it wasn't this participant
               losses++;
             }
             // Ties are not expected in elimination formats, so no specific "draw" handling here for points.
           }
         });
+        
         const points = wins * 3; // 3 points for a win, 0 for a loss (no draws)
+        const goalDifference = goalsFor - goalsAgainst;
 
         // Basic status determination - can be greatly expanded for DE
         let currentStatus = "Active";
         if (losses > 0 && tournament.format === 'SINGLE_ELIMINATION') {
             currentStatus = "Eliminated";
-        } else if (losses >= 2 && tournament.format === 'DOUBLE_ELIMINATION') { // Simple DE elimination
+        } else if (losses >= 2 && tournament.format === 'DOUBLE_ELIMINATION') { 
+            // Simple DE elimination
             currentStatus = "Eliminated";
         }
         // TODO: More detailed status for DE: "In Losers Bracket", "Winner"
@@ -50,12 +66,17 @@ const EliminationStatsTable: React.FC<EliminationStatsTableProps> = ({
           wins,
           losses,
           points,
+          goalsFor,
+          goalsAgainst,
+          goalDifference,
           currentStatus, // You can choose to display this or not
         };
       })
       .sort((a, b) => {
-        // Sort by: Wins (desc), then Losses (asc), then Points (desc) for tie-breaking
+        // Sort by: Wins (desc), then Goal Difference (desc), then Goals For (desc), then Losses (asc)
         if (b.wins !== a.wins) return b.wins - a.wins;
+        if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+        if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
         if (a.losses !== b.losses) return a.losses - b.losses;
         if (b.points !== a.points) return b.points - a.points;
         return a.participant_name.localeCompare(b.participant_name);
@@ -79,6 +100,9 @@ const EliminationStatsTable: React.FC<EliminationStatsTableProps> = ({
                 <th className="text-center py-2 px-3">MP</th>
                 <th className="text-center py-2 px-3">W</th>
                 <th className="text-center py-2 px-3">L</th>
+                <th className="text-center py-2 px-3">GF</th>
+                <th className="text-center py-2 px-3">GA</th>
+                <th className="text-center py-2 px-3">GD</th>
                 <th className="text-center py-2 px-3">Pts</th>
                 {/* <th className="text-left py-2 px-3">Status</th> */}
               </tr>
@@ -91,12 +115,19 @@ const EliminationStatsTable: React.FC<EliminationStatsTableProps> = ({
                   <td className="py-2 px-3 text-center">{s.matchesPlayed}</td>
                   <td className="py-2 px-3 text-center text-green-400 font-semibold">{s.wins}</td>
                   <td className="py-2 px-3 text-center text-red-400 font-semibold">{s.losses}</td>
+                  <td className="py-2 px-3 text-center">{s.goalsFor}</td>
+                  <td className="py-2 px-3 text-center">{s.goalsAgainst}</td>
+                  <td className="py-2 px-3 text-center font-medium">
+                    <span className={s.goalDifference > 0 ? 'text-green-400' : s.goalDifference < 0 ? 'text-red-400' : 'text-slate-300'}>
+                      {s.goalDifference > 0 ? '+' : ''}{s.goalDifference}
+                    </span>
+                  </td>
                   <td className="py-2 px-3 text-center font-bold text-slate-100">{s.points}</td>
                   {/* <td className="py-2 px-3 text-slate-400">{s.currentStatus}</td> */}
                 </tr>
               ))}
               {stats.length === 0 && (
-                <tr><td colSpan={6} className="text-center italic py-4 text-slate-500">No completed matches to display statistics.</td></tr>
+                <tr><td colSpan={9} className="text-center italic py-4 text-slate-500">No completed matches to display statistics.</td></tr>
               )}
             </tbody>
           </table>
