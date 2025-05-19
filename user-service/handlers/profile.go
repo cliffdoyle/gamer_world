@@ -7,6 +7,7 @@ import (
 	"github.com/cliffdoyle/gamer_world/user-service/models"
 	"github.com/cliffdoyle/gamer_world/user-service/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func GetUserProfile(c *gin.Context) {
@@ -176,4 +177,44 @@ func DeleteUserAccount(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User account deleted successfully"})
+}
+
+
+
+
+// GetMultipleUserDetails retrieves details for a list of user IDs
+func GetMultipleUserDetails(c *gin.Context) {
+	var req models.UserBatchRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload: " + err.Error()})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"users": make(map[uuid.UUID]models.UserDetailResponse)}) // Return empty map
+		return
+	}
+    if len(req.UserIDs) > 100 { // Optional: Limit batch size to prevent abuse
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Too many user IDs requested, limit is 100"})
+        return
+    }
+
+	var users []models.User // Your GORM User model
+	// Use GORM's "IN" condition to fetch multiple users by their IDs
+	if err := database.DB.Where("id IN ?", req.UserIDs).Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error fetching user details"})
+		return
+	}
+
+	userDetailsMap := make(map[uuid.UUID]models.UserDetailResponse)
+	for _, u := range users {
+		userDetailsMap[u.ID] = models.UserDetailResponse{
+			ID:       u.ID,
+			Username: u.Username,
+			// DisplayName: u.DisplayName, // Uncomment if you want to return this
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"users": userDetailsMap})
 }
