@@ -61,6 +61,6 @@ func NewOAuthUser(username, email, displayName, profilePictureURL, provider, pro
 		DisplayName:       displayName,
 		ProfilePictureURL: profilePictureURL,
 		Provider:          provider,
-		ProviderID:        providerID,
+		ProviderID:        &providerID,
 	}
 }
