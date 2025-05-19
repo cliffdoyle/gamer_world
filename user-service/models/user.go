@@ -42,11 +42,12 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 }
 
 // NewUser creates a new user with a generated UUID (for username/password registration)
-func NewUser(username, password string) *User {
+func NewUser(username, password,email string) *User {
 	return &User{
 		ID:       uuid.New(),
 		Username: username,
 		Password: password,
+		Email: email,
 		Provider: "credentials", // Default provider for this constructor
 	}
 }
