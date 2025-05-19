@@ -10,6 +10,7 @@ import { rankingApi } from '@/lib/api/ranking'; // Import ranking API
 
 // API_BASE_URL is defined inside the AuthProvider
 // Removed local User interface, as it's imported.
+const DEFAULT_GAME_ID_FOR_STATS = "fc 25";
 
 interface AuthContextType {
   user: AuthUserType | null;
@@ -104,9 +105,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     let enrichedUser = { ...baseUser };
     try {
-      console.log(`Fetching ranking stats for user ID: ${baseUser.id}`);
+      console.log(`Fetching ranking stats for user ID: ${baseUser.id}for game ID: ${ DEFAULT_GAME_ID_FOR_STATS };`);
       // Assuming baseUser.id is the UUID string. gameId can be "global" or omitted for default.
-      const stats: UserOverallStats = await rankingApi.getUserRankingStats(apiToken, baseUser.id);
+      
+      const stats: UserOverallStats = await rankingApi.getUserRankingStats(apiToken, baseUser.id, DEFAULT_GAME_ID_FOR_STATS);
       
       enrichedUser = {
         ...enrichedUser,
@@ -124,7 +126,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
       console.log("User enriched with stats:", enrichedUser);
     } catch (statsError) {
-      console.warn("AuthContext: Failed to fetch user ranking stats. Proceeding with base user data.", statsError);
+       console.warn(`AuthContext: Failed to fetch user ranking stats for game ${DEFAULT_GAME_ID_FOR_STATS}. Proceeding with base user data.`, statsError);
       // Set default/fallback values for stats if fetch fails
       enrichedUser.rankTitle = enrichedUser.rankTitle || "Unranked";
       enrichedUser.level = enrichedUser.level || 1;
