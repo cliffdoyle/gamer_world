@@ -7,6 +7,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// Request DTO for batch user details
+type UserBatchRequest struct {
+    UserIDs []uuid.UUID `json:"user_ids" binding:"required"`
+}
+
+// Response DTO for a single user's detail (for the map)
+type UserDetailResponse struct {
+    ID       uuid.UUID `json:"id"`
+    Username string    `json:"username"`
+    DisplayName string `json:"display_name,omitempty"` // Optional
+}
+
 type User struct {
 	ID                    uuid.UUID      `gorm:"type:uuid;primary_key;default:uuid_generate_v4()" json:"id"`
 	Username              string         `gorm:"type:varchar(255);unique;not null" json:"username"`
