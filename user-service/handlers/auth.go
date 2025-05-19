@@ -33,6 +33,7 @@ func Register(c *gin.Context) {
 	var input struct {
 		Username string `json:"username" binding:"required"`
 		Password string `json:"password" binding:"required"`
+		Email    string `json:"email" binding:"required,email"` // <-- added
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -50,7 +51,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	newUser := models.NewUser(input.Username, input.Password)
+	newUser := models.NewUser(input.Username, input.Password,input.Email)
 
 	hashedPassword, err := utils.HashPassword(newUser.Password)
 	if err != nil {
@@ -74,6 +75,9 @@ func Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
 		return
 	}
+
+	fmt.Printf("Registering user: %s with email: %s\n", input.Username, input.Email)
+
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
