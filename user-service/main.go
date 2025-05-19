@@ -46,6 +46,7 @@ func main() {
 		userRoutes.GET("/profile", handlers.GetUserProfile)
 		userRoutes.PUT("/profile", handlers.UpdateUserProfile)
 		userRoutes.DELETE("/account", handlers.DeleteUserAccount) // Changed from /profile to /account for clarity
+		userRoutes.POST("/users/batch-details", handlers.GetMultipleUserDetails)
 
 		//Added new routes for linking other services to get a list of users for linking 
 		//to tournament participants
