@@ -200,6 +200,7 @@ func main() {
 
 		participantReq := &domain.ParticipantRequest{ParticipantName: req.ParticipantName, Seed: req.Seed}
 		if req.UserID != nil && *req.UserID != "" {
+			//If a user_id string is provided in the request payload
 			parsedUserUUID,uuidErr:= uuid.Parse(*req.UserID)
 			if uuidErr != nil {
 				log.Printf("[AddParticipantHandler] Invalid UserID format provided ('%s'). Error: %v. Adding as guest.", *req.UserID, uuidErr)
@@ -214,15 +215,15 @@ func main() {
 		log.Printf("[AddParticipantHandler] No UserID provided, treating participant '%s' as guest.", req.ParticipantName)
 		participantReq.UserID = nil
 	}
-		token := c.GetHeader("Authorization")
-		if token != "" && len(token) > 7 {
-			token = token[7:]
-			user, err := userService.ValidateToken(token)
-			if err == nil {
-				userID := user.GetUserUUID()
-				participantReq.UserID = &userID
-			}
-		}
+		// token := c.GetHeader("Authorization")
+		// if token != "" && len(token) > 7 {
+		// 	token = token[7:]
+		// 	user, err := userService.ValidateToken(token)
+		// 	if err == nil {
+		// 		userID := user.GetUserUUID()
+		// 		participantReq.UserID = &userID//Bug overwriting user_id from request payload
+		// 	}
+		// }
 		participant, err := tournamentService.RegisterParticipant(c.Request.Context(), tournamentID, participantReq)
 		if err != nil {
 			log.Printf("[AddParticipantHandler] Error calling tournamentService.RegisterParticipant: %v", err)
