@@ -223,7 +223,7 @@ func GoogleSignIn(c *gin.Context) {
 				return
 			} else if user.Provider == "" {
 				user.Provider = "google"
-				user.ProviderID = googleUserID
+				user.ProviderID = &googleUserID
 				user.DisplayName = displayName
 				user.ProfilePictureURL = profilePictureURL
 				if err := database.DB.Save(&user).Error; err != nil {
