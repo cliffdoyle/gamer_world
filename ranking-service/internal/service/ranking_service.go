@@ -131,7 +131,7 @@ func (s *rankingService) GetUserRanking(ctx context.Context, userID uuid.UUID, g
 
 	winRate := 0.0
 	if scoreData.MatchesPlayed > 0 {
-		winRate = float64(scoreData.MatchesWon) / float64(scoreData.MatchesPlayed)
+		winRate = (float64(scoreData.MatchesWon) / float64(scoreData.MatchesPlayed))*100.0
 	}
 
 	rankTitle := "Unranked"
