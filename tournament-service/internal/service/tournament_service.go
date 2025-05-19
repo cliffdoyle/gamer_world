@@ -443,6 +443,10 @@ func (s *tournamentService) RegisterParticipant(
         return nil, domain.ErrAlreadyParticipant // Or return a more generic error if you prefer
     }
     // --- END OF CHECK ---
+	   log.Printf("[Service.RegisterParticipant] BEFORE creating Participant struct. request.UserID is: %v", request.UserID) // Log the pointer
+    if request.UserID != nil {
+        log.Printf("[Service.RegisterParticipant] Value of *request.UserID: %s", (*request.UserID).String())
+    }
 
     // Create participant
 	// Create participant
@@ -457,6 +461,11 @@ func (s *tournamentService) RegisterParticipant(
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
+
+	   log.Printf("[Service.RegisterParticipant] AFTER creating Participant struct. participant.UserID is: %v", participant.UserID) // Log the pointer again
+    if participant.UserID != nil {
+        log.Printf("[Service.RegisterParticipant] Value of *participant.UserID: %s", (*participant.UserID).String())
+    }
 
 	// Save to database
 	err = s.participantRepo.Create(ctx, participant)
