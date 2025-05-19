@@ -68,7 +68,7 @@ func main() {
 	if userServiceURL == "" {
 		log.Fatal("USER_SERVICE_URL environment variable is not set. Cannot initialize UserServiceClient.")
 	}
-	userServiceClient := client.NewHTTPUserServiceClient(userServiceURL /*, interServiceKey */)
+	userServiceClient,_ := client.NewHTTPUserServiceClient(userServiceURL /*, interServiceKey */)
 	// In ranking-service/cmd/main.go, after creating userServiceClient
 if userServiceClient == nil {
     log.Fatal("FATAL: UserServiceClient is nil after instantiation!")
