@@ -20,8 +20,8 @@ type User struct {
 	GamingHandleOriginPC  string         `gorm:"type:varchar(255)" json:"gaming_handle_origin_pc,omitempty"`
 	PreferredFifaVersion  string         `gorm:"type:varchar(50)" json:"preferred_fifa_version,omitempty"`
 	FavoriteRealWorldClub string         `gorm:"type:varchar(100)" json:"favorite_real_world_club,omitempty"`
-	Provider              string         `gorm:"type:varchar(50)" json:"provider,omitempty"`            // e.g., "google", "credentials"
-	ProviderID            string         `gorm:"type:varchar(255);unique" json:"provider_id,omitempty"` // Unique ID from the provider
+	Provider              string         `gorm:"type:varchar(50);not null;default:'credentials'" json:"provider,omitempty"`            // e.g., "google", "credentials"
+	ProviderID            *string         `gorm:"type:varchar(255);" json:"provider_id,omitempty"` // Unique ID from the provider
 	CreatedAt             time.Time      `gorm:"default:CURRENT_TIMESTAMP" json:"created_at"`
 	UpdatedAt             time.Time      `gorm:"default:CURRENT_TIMESTAMP" json:"updated_at"`
 	DeletedAt             gorm.DeletedAt `gorm:"index" json:"-"`
@@ -48,7 +48,7 @@ func NewUser(username, password,email string) *User {
 		Username: username,
 		Password: password,
 		Email: email,
-		Provider: "credentials", // Default provider for this constructor
+		// Provider: "credentials", // Default provider for this constructor
 	}
 }
 
