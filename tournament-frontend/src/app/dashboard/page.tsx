@@ -91,12 +91,39 @@ const formatDateForActivity = (isoString: string | undefined): string => {
 };
 
 const getActivityDotColor = (activityType: string | undefined): string => {
-    const upperType = activityType?.toUpperCase() || "";
-    if (upperType.includes('WIN') || upperType.includes('WON')) return 'bg-green-400';
-    if (upperType.includes('JOIN') || upperType.includes('CREATE')) return 'bg-teal-400';
-    if (upperType.includes('BADGE') || upperType.includes('ACHIEVEMENT')) return 'bg-yellow-400';
-    if (upperType.includes('POST') || upperType.includes('CHAT')) return 'bg-blue-400';
-    return 'bg-gray-500';
+    const upperType = activityType?.toUpperCase() || ""; // Convert to uppercase for case-insensitive matching
+
+    // It's better to match exact activity types if possible, rather than .includes,
+    // to avoid unintended color matches if new types are added.
+    // Assuming your domain.ActivityType constants are like:
+    // ActivityMatchWon = "MATCH_WON"
+    // ActivityMatchLost = "MATCH_LOST"
+    // ActivityTournamentJoined = "TOURNAMENT_JOINED"
+    // ActivityTournamentCreated = "TOURNAMENT_CREATED"
+
+    switch (upperType) {
+        case "MATCH_WON": // Or domain.ActivityMatchWon if imported and used
+            return 'bg-green-400'; // Green for win
+        case "MATCH_LOST": // Or domain.ActivityMatchLost
+            return 'bg-red-500';   // <-- RED FOR LOSS (Tailwind red-500)
+        case "MATCH_DRAW": // If you add draws later
+            return 'bg-yellow-400'; // Example: Yellow for draw
+        case "TOURNAMENT_JOINED":
+        case "TOURNAMENT_CREATED":
+            return 'bg-teal-400';  // Teal for tournament actions
+        case "BADGE_EARNED":       // Future types
+        case "ACHIEVEMENT_UNLOCKED": // Example future type
+            return 'bg-yellow-400';// Yellow for achievements/badges
+        case "GENERAL_POST":       // Future types
+            return 'bg-blue-400';  // Blue for posts or general info
+        default:
+            // Fallback if the type doesn't match any specific case
+            // You could also try a more general .includes() here if needed for flexibility
+            if (upperType.includes('WIN')) return 'bg-green-400';
+            if (upperType.includes('LOSS') || upperType.includes('LOST')) return 'bg-red-500'; // Fallback for variations of loss
+            if (upperType.includes('JOIN') || upperType.includes('CREATE')) return 'bg-teal-400';
+            return 'bg-gray-500'; // Default gray
+    }
 };
 
 // === END OF HELPER FUNCTIONS ===
@@ -188,7 +215,7 @@ export default function Dashboard() {
           {/* Stats Grid - Now uses authUser for stats */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             {[
-              { icon: FaTrophy, label: "Win Rate", value: authUser.winRate !== undefined && authUser.winRate !== null ? `${(authUser.winRate * 100).toFixed(0)}%` : 'N/A' },
+              { icon: FaTrophy, label: "Win Rate", value: authUser.winRate !== undefined && authUser.winRate !== null ? `${authUser.winRate.toFixed(1)}%` : 'N/A' },
               { icon: FaGamepad, label: "Total Games", value: authUser.totalGamesPlayed !== undefined && authUser.totalGamesPlayed !== null ? authUser.totalGamesPlayed : 'N/A' },
               { icon: FaUsers, label: "Tournaments Played", value: authUser.tournamentsPlayed !== undefined && authUser.tournamentsPlayed !== null ? authUser.tournamentsPlayed : 'N/A' },
               { icon: FaMedal, label: "Global Rank", value: authUser.globalRank && authUser.globalRank > 0 ? `#${authUser.globalRank}` : (authUser.totalGamesPlayed && authUser.totalGamesPlayed > 0 ? 'Unranked' : 'N/A') },
