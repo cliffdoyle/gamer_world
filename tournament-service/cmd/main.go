@@ -76,10 +76,16 @@ func main() {
 	messageRepo := repository.NewMessageRepository(db)
 	bracketGen := bracket.NewSingleEliminationGenerator()
 
+	//Inititialize UserActivity components
+	activityRepo:=repository.NewUserActivityRepository(db)
+	userActivityService:=service.NewUserActivityService(activityRepo,tournamentRepo)
+	// userActivityHandler := handlers.NewUserActivityHandler(userActivityService) // Instantiate the handler
+
+
 	// Initialize UserActivity repository and service
-	activityRepo := repository.NewUserActivityRepository(db)
-	// UserActivityService constructor requires tournamentRepo to enrich activity descriptions if needed
-	userActivityService := service.NewUserActivityService(activityRepo, tournamentRepo)
+	// activityRepo := repository.NewUserActivityRepository(db)
+	// // UserActivityService constructor requires tournamentRepo to enrich activity descriptions if needed
+	// userActivityService := service.NewUserActivityService(activityRepo, tournamentRepo)
 
 	// Initialize TournamentService
 	// NOTE: The provided tournamentService.go's NewTournamentService constructor signature
