@@ -475,8 +475,9 @@ func (s *tournamentService) RegisterParticipant(
 	   log.Printf("[Service.RegisterParticipant] BEFORE creating Participant struct. request.UserID is: %v", request.UserID) // Log the pointer
     if request.UserID != nil {
         log.Printf("[Service.RegisterParticipant] Value of *request.UserID: %s", (*request.UserID).String())
+		return nil, errors.New("participant registration requires a valid UserID to link")
     }
-
+	targetUserID := *request.UserID
     // Create participant
 	// Create participant
 	participant := &domain.Participant{
@@ -501,6 +502,28 @@ func (s *tournamentService) RegisterParticipant(
 	if err != nil {
 		return nil, fmt.Errorf("failed to register participant: %w", err)
 	}
+	
+	// --- RECORD ACTIVITY for TOURNAMENT_JOINED ---
+	if s.userActivityService != nil {
+		activityType := domain.ActivityTournamentJoined
+		entityType := domain.EntityTypeTournament
+		contextURL := fmt.Sprintf("/tournaments/%s", tournamentID.String())
+
+		// Passing "" for description to let userActivityService try to auto-generate it
+		_, activityErr := s.userActivityService.RecordActivity(
+			ctx, targetUserID, activityType, "", &tournamentID, &entityType, &contextURL,
+		)
+		if activityErr != nil {
+			log.Printf("Warning: RegisterParticipant - Failed to record '%s' activity for T-%s by U-%s: %v",
+				activityType, tournamentID, targetUserID, activityErr)
+		} else {
+			log.Printf("RegisterParticipant - Successfully recorded '%s' activity for T-%s by U-%s",
+				activityType, tournamentID, targetUserID)
+		}
+	} else {
+		log.Println("Warning: RegisterParticipant - userActivityService is nil. Cannot record activity.")
+	}
+	// --- END RECORD ACTIVITY ---
 
 	return participant, nil
 }
