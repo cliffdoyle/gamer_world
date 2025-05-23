@@ -888,6 +888,7 @@ type RS_MatchResultEvent struct {
 
 // --- End DTO definitions ---
 
+//With activity recording
 // UpdateMatchScore updates the score of a match, advances winners, and notifies ranking service.
 func (s *tournamentService) UpdateMatchScore(
 	ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, reportingUserID uuid.UUID, // reportingUserID not used yet but good to have
@@ -1019,6 +1020,40 @@ func (s *tournamentService) UpdateMatchScore(
 		go s.notifyRankingService(event) // Notify asynchronously
 	}
 	// --- END NOTIFY RANKING SERVICE ---
+
+	// --- RECORD ACTIVITIES for MATCH_WON and MATCH_LOST ---
+	if s.userActivityService != nil {
+		matchEntityType := domain.EntityTypeMatch
+		matchContextURL := fmt.Sprintf("/tournaments/%s/matches/%s", tournamentID.String(), matchID.String()) // Example
+
+		// Activity for Winner
+		if determinedWinnerID != nil {
+			winnerEntry, errW := s.participantRepo.GetByID(ctx, *determinedWinnerID)
+			if errW == nil && winnerEntry != nil && winnerEntry.UserID != nil {
+				// Description for activity service to enrich (or provide full here)
+				_, activityErr := s.userActivityService.RecordActivity(
+					ctx, *winnerEntry.UserID, domain.ActivityMatchWon, "", &matchID, &matchEntityType, &matchContextURL,
+				)
+				if activityErr != nil { log.Printf("Warning: UpdateMatchScore - Failed to record MATCH_WON: %v", activityErr) }
+			}
+		}
+
+		// Activity for Loser
+		if determinedLoserID != nil {
+			loserEntry, errL := s.participantRepo.GetByID(ctx, *determinedLoserID)
+			if errL == nil && loserEntry != nil && loserEntry.UserID != nil {
+				// Description for activity service to enrich
+				_, activityErr := s.userActivityService.RecordActivity(
+					ctx, *loserEntry.UserID, domain.ActivityMatchLost, "", &matchID, &matchEntityType, &matchContextURL,
+				)
+				if activityErr != nil { log.Printf("Warning: UpdateMatchScore - Failed to record MATCH_LOST: %v", activityErr) }
+			}
+		}
+		// Note: You might want to record activity for a DRAW as well if applicable.
+	} else {
+		log.Println("Warning: UpdateMatchScore - userActivityService is nil. Cannot record activities.")
+	}
+	// --- END RECORD ACTIVITIES ---
 
 	// --- Post-Update Logic: Advancement and Tournament Completion ---
 	// Only proceed with advancement if there was an actual winner determined (not a draw)
