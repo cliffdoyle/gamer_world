@@ -101,7 +101,7 @@ func main() {
 		matchRepo,
 		messageRepo,
 		bracketGen,
-		// userActivityService, // Removed to match the NewTournamentService signature in your provided service.go
+		 userActivityService, // Removed to match the NewTournamentService signature in your provided service.go
 	)
 
 	// Health check
