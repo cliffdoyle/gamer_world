@@ -459,6 +459,12 @@ func isValidStatusTransition(from, to domain.TournamentStatus) bool {
 func (s *tournamentService) RegisterParticipant(
 	ctx context.Context, tournamentID uuid.UUID, request *domain.ParticipantRequest,
 ) (*domain.Participant, error) {
+    // --- END OF CHECK ---
+	   log.Printf("[Service.RegisterParticipant] BEFORE creating Participant struct. request.UserID is: %v", request.UserID) // Log the pointer
+    if request.UserID == nil {
+        log.Printf("[Service.RegisterParticipant] Value of *request.UserID: %s", (*request.UserID).String())
+		return nil, errors.New("participant registration requires a valid UserID to link")
+    }
 	 // --- ADD THIS CHECK ---
     // Check if a participant with this UserID is already registered for this tournament
     exists, err := s.participantRepo.ExistsByTournamentIDAndUserID(ctx, tournamentID, *request.UserID)
@@ -471,12 +477,7 @@ func (s *tournamentService) RegisterParticipant(
         // You should define a custom error type like domain.ErrAlreadyParticipant
         return nil, domain.ErrAlreadyParticipant // Or return a more generic error if you prefer
     }
-    // --- END OF CHECK ---
-	   log.Printf("[Service.RegisterParticipant] BEFORE creating Participant struct. request.UserID is: %v", request.UserID) // Log the pointer
-    if request.UserID != nil {
-        log.Printf("[Service.RegisterParticipant] Value of *request.UserID: %s", (*request.UserID).String())
-		return nil, errors.New("participant registration requires a valid UserID to link")
-    }
+
 	targetUserID := *request.UserID
     // Create participant
 	// Create participant
@@ -891,228 +892,238 @@ type RS_MatchResultEvent struct {
 //With activity recording
 // UpdateMatchScore updates the score of a match, advances winners, and notifies ranking service.
 func (s *tournamentService) UpdateMatchScore(
-	ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, reportingUserID uuid.UUID, // reportingUserID not used yet but good to have
+	ctx context.Context, tournamentID uuid.UUID, matchID uuid.UUID, reportingUserID uuid.UUID,
 	request *domain.ScoreUpdateRequest,
 ) error {
-	// Get match
+	// 1. Get the match
 	match, err := s.matchRepo.GetByID(ctx, matchID)
 	if err != nil {
 		return fmt.Errorf("failed to get match %s: %w", matchID, err)
 	}
-
-	// Validate match belongs to the tournament
 	if match.TournamentID != tournamentID {
 		return errors.New("match does not belong to this tournament")
 	}
 
-	// Get tournament (needed for format and game ID)
-	tournament, err := s.tournamentRepo.GetByID(ctx, tournamentID)
-	if err != nil {
-		return fmt.Errorf("failed to get tournament %s: %w", tournamentID, err)
+	// 2. Get the tournament (needed for GameID and format checks)
+	tournament, errT := s.tournamentRepo.GetByID(ctx, tournamentID)
+	if errT != nil {
+		return fmt.Errorf("failed to get tournament %s: %w", tournamentID, errT)
 	}
 
-	// Check if match participants are set (cannot update score for a bye or TBD match)
+	// 3. Ensure participants are assigned to the match
 	if match.Participant1ID == nil || match.Participant2ID == nil {
-		return errors.New("cannot update score for a match without two assigned participants")
+		return errors.New("cannot update score: match participants not fully assigned")
 	}
 
-	// Update scores from request
+	// 4. Fetch the full participant entries (these contain ParticipantName and linked platform UserID)
+	p1Entry, errP1 := s.participantRepo.GetByID(ctx, *match.Participant1ID)
+	if errP1 != nil || p1Entry == nil {
+		log.Printf("Error fetching participant 1 (P_ID: %s) details for M_ID %s: %v", *match.Participant1ID, matchID, errP1)
+		return fmt.Errorf("failed to get details for participant 1 (%s): %w", *match.Participant1ID, errP1)
+	}
+
+	p2Entry, errP2 := s.participantRepo.GetByID(ctx, *match.Participant2ID)
+	if errP2 != nil || p2Entry == nil {
+		log.Printf("Error fetching participant 2 (P_ID: %s) details for M_ID %s: %v", *match.Participant2ID, matchID, errP2)
+		return fmt.Errorf("failed to get details for participant 2 (%s): %w", *match.Participant2ID, errP2)
+	}
+
+	// 5. Update match scores from request
 	match.ScoreParticipant1 = request.ScoreParticipant1
-	fmt.Println("Score P1: ", match.ScoreParticipant1)
 	match.ScoreParticipant2 = request.ScoreParticipant2
-	fmt.Println("Score P2: ", match.ScoreParticipant2)
 	if request.MatchNotes != "" {
 		match.MatchNotes = request.MatchNotes
 	}
 	if len(request.MatchProofs) > 0 {
 		match.MatchProofs = request.MatchProofs
 	}
+	log.Printf("Updating scores for Match %s: %s (%d) vs %s (%d)", matchID, p1Entry.ParticipantName, match.ScoreParticipant1, p2Entry.ParticipantName, match.ScoreParticipant2)
 
-	var finalP1Outcome RS_ResultType
-	var finalP2Outcome RS_ResultType
-	var determinedWinnerID, determinedLoserID *uuid.UUID
 
-	// Determine winner, loser, and outcomes for ranking
-	if match.ScoreParticipant1 > match.ScoreParticipant2 {
-		determinedWinnerID = match.Participant1ID
-		determinedLoserID = match.Participant2ID
-		finalP1Outcome = RS_Win
-		finalP2Outcome = RS_Loss
-	} else if match.ScoreParticipant2 > match.ScoreParticipant1 {
-		determinedWinnerID = match.Participant2ID
-		determinedLoserID = match.Participant1ID
-		finalP1Outcome = RS_Loss
-		finalP2Outcome = RS_Win
-	} else { // Scores are equal - it's a draw
-		// For formats that don't allow draws (Single/Double Elim, Swiss), this input should be an error
-		if tournament.Format == domain.SingleElimination ||
-			tournament.Format == domain.DoubleElimination ||
-			tournament.Format == domain.Swiss {
-			return fmt.Errorf("ties are not allowed in %s format; scores were %d-%d",
-				tournament.Format, match.ScoreParticipant1, match.ScoreParticipant2)
-		}
-		// For RoundRobin, draws are allowed. WinnerID and LoserID remain nil.
-		finalP1Outcome = RS_Draw
-		finalP2Outcome = RS_Draw
-		// determinedWinnerID and determinedLoserID remain nil
+	// 6. Determine winner (Participant.ID), loser (Participant.ID), and outcomes for Ranking Service
+	var p1OutcomeForRanking RS_ResultType // Use your RS_ResultType
+	var p2OutcomeForRanking RS_ResultType
+	var determinedWinnerPID, determinedLoserPID *uuid.UUID // Participant IDs
+
+	if match.ScoreParticipant1 == match.ScoreParticipant2 {
+		// Since you specified "no draw"
+		return fmt.Errorf("ties are not allowed in this tournament format; scores were %d-%d for match %s",
+			match.ScoreParticipant1, match.ScoreParticipant2, matchID)
+	} else if match.ScoreParticipant1 > match.ScoreParticipant2 {
+		determinedWinnerPID = match.Participant1ID // p1Entry.ID
+		determinedLoserPID = match.Participant2ID  // p2Entry.ID
+		p1OutcomeForRanking = RS_Win
+		p2OutcomeForRanking = RS_Loss
+	} else { // ScoreParticipant2 > ScoreParticipant1
+		determinedWinnerPID = match.Participant2ID  // p2Entry.ID
+		determinedLoserPID = match.Participant1ID // p1Entry.ID
+		p1OutcomeForRanking = RS_Loss
+		p2OutcomeForRanking = RS_Win
 	}
 
-	// Update match record
+	// 7. Update match record in the database
 	match.Status = domain.MatchCompleted
-	fmt.Println("Match Status: ", match.Status)	
 	now := time.Now()
 	match.CompletedTime = &now
-	match.WinnerID = determinedWinnerID // Can be nil for draws
-	fmt.Println("Match WinnerID: ", match.WinnerID)
-	match.LoserID = determinedLoserID   // Can be nil for draws
-	fmt.Println("Match LoserID: ", match.LoserID)
+	match.WinnerID = determinedWinnerPID
+	match.LoserID = determinedLoserPID
 
 	err = s.matchRepo.Update(ctx, match)
 	if err != nil {
 		return fmt.Errorf("failed to update match %s in repository: %w", match.ID, err)
 	}
-	log.Printf("Match %s updated successfully. P1 Score: %d, P2 Score: %d. Winner: %v",
-		match.ID, match.ScoreParticipant1, match.ScoreParticipant2, match.WinnerID)
+	log.Printf("Match %s successfully updated in DB. WinnerPID: %v, LoserPID: %v", match.ID, match.WinnerID, match.LoserID)
 
-	// --- Notify Ranking Service ---
-	// Fetch participant details to get their actual UserIDs
-	// (match.Participant1ID and match.Participant2ID are participant entry IDs, not necessarily direct user IDs)
-	participant1, errP1 := s.participantRepo.GetByID(ctx, *match.Participant1ID) // Assumes Participant1ID is never nil at this stage
-	participant2, errP2 := s.participantRepo.GetByID(ctx, *match.Participant2ID) // Assumes Participant2ID is never nil
-
-	if errP1 != nil || errP2 != nil {
-		log.Printf("Critical Error (TID: %s, MID: %s): Could not get participant details to notify ranking service. P1 err: %v, P2 err: %v. Ranking not updated.",
-			tournamentID, matchID, errP1, errP2)
-		// Decide if this should return an error to the user or just log. For now, logging and continuing match advancement.
-	} else if participant1.UserID == nil || participant2.UserID == nil {
-		log.Printf("Warning (TID: %s, MID: %s): One or both participants do not have an associated UserID. Ranking not updated for those without UserID. P1 UserID: %v, P2 UserID: %v",
-			tournamentID, matchID, participant1.UserID, participant2.UserID)
-		// Proceed to notify for those who DO have a UserID
-		var usersToRank []RS_UserMatchOutcome
-		if participant1.UserID != nil {
-			usersToRank = append(usersToRank, RS_UserMatchOutcome{UserID: *participant1.UserID, Outcome: finalP1Outcome})
-		}
-		if participant2.UserID != nil {
-			usersToRank = append(usersToRank, RS_UserMatchOutcome{UserID: *participant2.UserID, Outcome: finalP2Outcome})
-		}
-		if len(usersToRank) > 0 {
-			event := RS_MatchResultEvent{
-				GameID:    tournament.Game,
-				TournamentID: tournament.ID,
-				MatchID:   match.ID,
-				Timestamp: time.Now(),
-				Users:     usersToRank,
-			}
-			go s.notifyRankingService(event)
-		}
-
-	} else { // Both participants and their UserIDs are available
-		event := RS_MatchResultEvent{
-			GameID:    tournament.Game, // Use Game from tournament domain
-			MatchID:   match.ID,
-			TournamentID: tournament.ID,
-			Timestamp: time.Now(),
+	// 8. --- Notify Ranking Service ---
+	if p1Entry.UserID != nil && p2Entry.UserID != nil { // Check if platform UserIDs are linked
+		rankingEvent := RS_MatchResultEvent{
+			GameID:       tournament.Game, // GameID from the tournament
+			TournamentID: tournamentID,
+			MatchID:      match.ID,
+			Timestamp:    time.Now(),
 			Users: []RS_UserMatchOutcome{
-				{UserID: *participant1.UserID, Outcome: finalP1Outcome},
-				{UserID: *participant2.UserID, Outcome: finalP2Outcome},
+				{UserID: *p1Entry.UserID, Outcome: p1OutcomeForRanking}, // Platform UserID
+				{UserID: *p2Entry.UserID, Outcome: p2OutcomeForRanking}, // Platform UserID
 			},
 		}
-		go s.notifyRankingService(event) // Notify asynchronously
+		 go s.notifyRankingService(rankingEvent) // Assuming this is your async call
+		// For now, let's make it synchronous for easier debugging if notifyRankingService can error
+		// if errNotify := s.notifyRankingService(rankingEvent); errNotify != nil {
+		// 	log.Printf("Warning: UpdateMatchScore - Failed to notify ranking service for match %s: %v", matchID, errNotify)
+		// 	// Decide if this should be a critical error that rolls back or just a warning.
+		// 	// For now, it's just a warning and the flow continues.
+		// } else {
+		// 	log.Printf("UpdateMatchScore: Successfully notified ranking service for match %s", matchID)
+		// }
+	} else {
+		log.Printf("Warning: UpdateMatchScore - One or both participants (P1: %s - UserID: %v, P2: %s - UserID: %v) missing linked platform UserID. Ranking not notified.",
+			p1Entry.ParticipantName, p1Entry.UserID, p2Entry.ParticipantName, p2Entry.UserID)
 	}
-	// --- END NOTIFY RANKING SERVICE ---
+	// --- END Notify Ranking Service ---
 
-	// --- RECORD ACTIVITIES for MATCH_WON and MATCH_LOST ---
+
+	// 9. --- RECORD ACTIVITIES for MATCH_WON and MATCH_LOST ---
 	if s.userActivityService != nil {
 		matchEntityType := domain.EntityTypeMatch
-		matchContextURL := fmt.Sprintf("/tournaments/%s/matches/%s", tournamentID.String(), matchID.String()) // Example
+		matchContextURL := fmt.Sprintf("/tournaments/%s/matches/%s", tournamentID.String(), matchID.String()) // Example link
+
+		var winnerName, loserName string
+		var winnerPlatformUserID, loserPlatformUserID *uuid.UUID
+		var winnerScore, loserScore int
+
+		// Use p1Entry and p2Entry which are already fetched *domain.Participant
+		if *determinedWinnerPID == p1Entry.ID { // P1 (p1Entry) won
+			winnerName = p1Entry.ParticipantName
+			winnerPlatformUserID = p1Entry.UserID
+			winnerScore = match.ScoreParticipant1
+			loserName = p2Entry.ParticipantName
+			loserPlatformUserID = p2Entry.UserID
+			loserScore = match.ScoreParticipant2
+		} else { // P2 (p2Entry) won (since no draws)
+			winnerName = p2Entry.ParticipantName
+			winnerPlatformUserID = p2Entry.UserID
+			winnerScore = match.ScoreParticipant2
+			loserName = p1Entry.ParticipantName
+			loserPlatformUserID = p1Entry.UserID
+			loserScore = match.ScoreParticipant1
+		}
 
 		// Activity for Winner
-		if determinedWinnerID != nil {
-			winnerEntry, errW := s.participantRepo.GetByID(ctx, *determinedWinnerID)
-			if errW == nil && winnerEntry != nil && winnerEntry.UserID != nil {
-				// Description for activity service to enrich (or provide full here)
-				_, activityErr := s.userActivityService.RecordActivity(
-					ctx, *winnerEntry.UserID, domain.ActivityMatchWon, "", &matchID, &matchEntityType, &matchContextURL,
-				)
-				if activityErr != nil { log.Printf("Warning: UpdateMatchScore - Failed to record MATCH_WON: %v", activityErr) }
+		if winnerPlatformUserID != nil { // Check if winner has a linked platform UserID
+			descWin := fmt.Sprintf("Won match %d-%d against %s", winnerScore, loserScore, loserName)
+			_, activityErr := s.userActivityService.RecordActivity(
+				ctx, *winnerPlatformUserID, domain.ActivityMatchWon, descWin, &matchID, &matchEntityType, &matchContextURL,
+			)
+			if activityErr != nil {
+				log.Printf("Warning: UpdateMatchScore - Failed to record MATCH_WON for U-%s: %v", *winnerPlatformUserID, activityErr)
+			} else {
+				log.Printf("UpdateMatchScore - Successfully recorded MATCH_WON for U-%s (P-%s, Match: %s)", *winnerPlatformUserID, *determinedWinnerPID, matchID)
 			}
+		} else {
+			log.Printf("Warning: UpdateMatchScore - Winner (P-%s) has no linked platform UserID. MATCH_WON activity not recorded.", *determinedWinnerPID)
 		}
 
 		// Activity for Loser
-		if determinedLoserID != nil {
-			loserEntry, errL := s.participantRepo.GetByID(ctx, *determinedLoserID)
-			if errL == nil && loserEntry != nil && loserEntry.UserID != nil {
-				// Description for activity service to enrich
-				_, activityErr := s.userActivityService.RecordActivity(
-					ctx, *loserEntry.UserID, domain.ActivityMatchLost, "", &matchID, &matchEntityType, &matchContextURL,
-				)
-				if activityErr != nil { log.Printf("Warning: UpdateMatchScore - Failed to record MATCH_LOST: %v", activityErr) }
+		if loserPlatformUserID != nil { // Check if loser has a linked platform UserID
+			descLoss := fmt.Sprintf("Lost match %d-%d to %s", loserScore, winnerScore, winnerName)
+			_, activityErr := s.userActivityService.RecordActivity(
+				ctx, *loserPlatformUserID, domain.ActivityMatchLost, descLoss, &matchID, &matchEntityType, &matchContextURL,
+			)
+			if activityErr != nil {
+				log.Printf("Warning: UpdateMatchScore - Failed to record MATCH_LOST for U-%s: %v", *loserPlatformUserID, activityErr)
+			} else {
+				log.Printf("UpdateMatchScore - Successfully recorded MATCH_LOST for U-%s (P-%s, Match: %s)", *loserPlatformUserID, *determinedLoserPID, matchID)
 			}
+		} else {
+			log.Printf("Warning: UpdateMatchScore - Loser (P-%s) has no linked platform UserID. MATCH_LOST activity not recorded.", *determinedLoserPID)
 		}
-		// Note: You might want to record activity for a DRAW as well if applicable.
 	} else {
 		log.Println("Warning: UpdateMatchScore - userActivityService is nil. Cannot record activities.")
 	}
 	// --- END RECORD ACTIVITIES ---
 
-	// --- Post-Update Logic: Advancement and Tournament Completion ---
-	// Only proceed with advancement if there was an actual winner determined (not a draw)
-	if determinedWinnerID != nil { // WinnerID implies not a draw
-		// For double elimination tournaments: Move loser
-		if tournament.Format == domain.DoubleElimination && determinedLoserID != nil && match.LoserNextMatchID != nil {
-			// ... (existing loser advancement logic - looks okay) ...
-			loserMatch, errGetLoser := s.matchRepo.GetByID(ctx, *match.LoserNextMatchID)
-			if errGetLoser != nil {
-				log.Printf("Warning (TID: %s, MID: %s): Failed to get loser's next match %s: %v", tournamentID, matchID, *match.LoserNextMatchID, errGetLoser)
+
+	// 10. --- Post-Update Logic: Advancement and Tournament Completion ---
+	// This logic uses determinedWinnerPID (Participant.ID of the winner)
+	if determinedWinnerPID != nil { // This will always be true if no draws are allowed and scores differ
+		// Advance winner to next match if applicable
+		if match.NextMatchID != nil {
+			nextMatch, errGetNext := s.matchRepo.GetByID(ctx, *match.NextMatchID)
+			if errGetNext != nil {
+				log.Printf("Warning: UpdateMatchScore - Error getting next match %s for winner of %s: %v", *match.NextMatchID, matchID, errGetNext)
+				// Potentially return an error here or just log if advancement isn't critical to fail the whole op
 			} else {
 				assigned := false
-				if loserMatch.Participant1ID == nil {
-					loserMatch.Participant1ID = determinedLoserID
+				if nextMatch.Participant1ID == nil {
+					nextMatch.Participant1ID = determinedWinnerPID
 					assigned = true
-				} else if loserMatch.Participant2ID == nil {
-					loserMatch.Participant2ID = determinedLoserID
+				} else if nextMatch.Participant2ID == nil {
+					nextMatch.Participant2ID = determinedWinnerPID
 					assigned = true
 				} else {
-					log.Printf("Warning (TID: %s, MID: %s): Loser's next match %s already has both participants assigned.", tournamentID, matchID, loserMatch.ID)
+					log.Printf("Warning: UpdateMatchScore - Winner's next match %s already has both participants assigned.", nextMatch.ID)
 				}
 				if assigned {
-					if errUpdateLoser := s.matchRepo.Update(ctx, loserMatch); errUpdateLoser != nil {
-						log.Printf("Warning (TID: %s, MID: %s): Failed to update loser's next match %s with participant %s: %v", tournamentID, matchID, loserMatch.ID, *determinedLoserID, errUpdateLoser)
+					if errUpdateNext := s.matchRepo.Update(ctx, nextMatch); errUpdateNext != nil {
+						log.Printf("Warning: UpdateMatchScore - Error updating next match %s with winner %s: %v", nextMatch.ID, *determinedWinnerPID, errUpdateNext)
+						// Potentially return an error
 					}
 				}
 			}
 		}
 
-		// Advance winner to next match if applicable
-		if match.NextMatchID != nil {
-			// ... (existing winner advancement logic - looks okay) ...
-			nextMatch, errGetNext := s.matchRepo.GetByID(ctx, *match.NextMatchID)
-			if errGetNext != nil {
-				return fmt.Errorf("error getting next match %s for winner of %s (TID: %s): %w", *match.NextMatchID, matchID, tournamentID, errGetNext)
-			}
-			assigned := false
-			if nextMatch.Participant1ID == nil {
-				nextMatch.Participant1ID = determinedWinnerID
-				assigned = true
-			} else if nextMatch.Participant2ID == nil {
-				nextMatch.Participant2ID = determinedWinnerID
-				assigned = true
+		// For double elimination tournaments: Move loser (determinedLoserPID)
+		if tournament.Format == domain.DoubleElimination && determinedLoserPID != nil && match.LoserNextMatchID != nil {
+			loserNextMatch, errGetLoser := s.matchRepo.GetByID(ctx, *match.LoserNextMatchID)
+			if errGetLoser != nil {
+				log.Printf("Warning: UpdateMatchScore - Failed to get loser's next match %s: %v", *match.LoserNextMatchID, errGetLoser)
 			} else {
-				log.Printf("Warning (TID: %s, MID: %s): Winner's next match %s already has both participants assigned.", tournamentID, matchID, nextMatch.ID)
-			}
-			if assigned {
-				if errUpdateNext := s.matchRepo.Update(ctx, nextMatch); errUpdateNext != nil {
-					return fmt.Errorf("error updating next match %s with winner %s from match %s (TID: %s): %w", nextMatch.ID, *determinedWinnerID, matchID, tournamentID, errUpdateNext)
+				assigned := false
+				if loserNextMatch.Participant1ID == nil {
+					loserNextMatch.Participant1ID = determinedLoserPID
+					assigned = true
+				} else if loserNextMatch.Participant2ID == nil {
+					loserNextMatch.Participant2ID = determinedLoserPID
+					assigned = true
+				}
+				if assigned {
+					if errUpdateLoser := s.matchRepo.Update(ctx, loserNextMatch); errUpdateLoser != nil {
+						log.Printf("Warning: UpdateMatchScore - Failed to update loser's next match %s with P-%s: %v", loserNextMatch.ID, *determinedLoserPID, errUpdateLoser)
+					}
 				}
 			}
 		}
-	} // End of advancement logic
+	}
+	// --- End Post-Update Logic ---
 
 	// Check if tournament is complete
+	// This part might need to run outside the main db transaction of match update, or be careful.
+	// For simplicity, keeping it as is, but complex tournament completion might need its own flow.
 	completed, errCheck := s.checkTournamentCompletion(ctx, tournament.ID)
 	if errCheck != nil {
 		log.Printf("Warning (TID: %s): Failed to check tournament completion after match %s update: %v", tournamentID, matchID, errCheck)
 	} else if completed {
+		log.Printf("Tournament %s is now complete. Attempting to update status.", tournamentID)
 		if errStatusUpdate := s.UpdateTournamentStatus(ctx, tournament.ID, domain.Completed); errStatusUpdate != nil {
 			log.Printf("Warning (TID: %s): Failed to update tournament status to COMPLETED: %v", tournamentID, errStatusUpdate)
 		}
