@@ -50,9 +50,9 @@ func (s *userActivityService) RecordActivity(
 					if err == nil && tournament != nil { // No error and tournament found
 						switch activityType {
 						case domain.ActivityTournamentJoined:
-							description = fmt.Sprintf("Joined tournament: '%s'", tournament.Name)
+							description = fmt.Sprintf("Joined %s tournament", tournament.Name)
 						case domain.ActivityTournamentCreated:
-							description = fmt.Sprintf("Created tournament: '%s'", tournament.Name)
+							description = fmt.Sprintf("Created %s tournament", tournament.Name)
 						}
 					} else {
 						// Log warning: could not fetch tournament details for description
