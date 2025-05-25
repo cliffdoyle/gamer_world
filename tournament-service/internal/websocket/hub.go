@@ -13,8 +13,8 @@ import (
 
 // Client represents a single WebSocket connection.
 type Client struct {
-	conn *websocket.Conn// The WebSocket connection.
-	send chan []byte // Buffered channel of outbound messages.
+	Conn *websocket.Conn// The WebSocket connection.
+	Send chan []byte // Buffered channel of outbound messages.
 	// userID uuid.UUID // Optional: to associate connection with a user
 }
 
@@ -38,19 +38,19 @@ func NewHub() *Hub {
 
 
 // WritePump pumps messages from the hub to the websocket connection.
-func (c *Client) writePump() {
+func (c *Client) WritePump() {
 	defer func() {
-		c.conn.Close()
+		c.Conn.Close()
 	}()
 	for {
 		select {
-		case message, ok := <-c.send:
+		case message, ok := <-c.Send:
 			if !ok {
 				// The hub closed the channel.
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				log.Printf("WebSocket error writing message: %v", err)
 				return // Connection will be closed by defer
 			}
@@ -61,10 +61,10 @@ func (c *Client) writePump() {
 // ReadPump (optional for now if you only broadcast server-to-client)
 // It pumps messages from the websocket connection to the hub (if clients send messages).
 // For now, we'll just use it to detect closed connections.
-func (c *Client) readPump(hub *Hub) {
+func (c *Client) ReadPump(hub *Hub) {
 	defer func() {
 		hub.unregister <- c
-		c.conn.Close()
+		c.Conn.Close()
 	}()
 	// You can set read limits if necessary
 	// c.conn.SetReadLimit(maxMessageSize)
@@ -72,7 +72,7 @@ func (c *Client) readPump(hub *Hub) {
 	// c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 
 	for {
-		_, _, err := c.conn.ReadMessage() // Read messages (even if we don't process them from client)
+		_, _, err := c.Conn.ReadMessage() // Read messages (even if we don't process them from client)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("WebSocket unexpected close error: %v", err)
@@ -98,7 +98,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send) // Close the client's send channel
+				close(client.Send) // Close the client's send channel
 				log.Printf("WebSocket client unregistered. Total clients: %d", len(h.clients))
 			}
 			h.mu.Unlock()
@@ -111,10 +111,10 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			for client := range h.clients {
 				select {
-				case client.send <- jsonData: // Send to client's buffered channel
+				case client.Send <- jsonData: // Send to client's buffered channel
 				default: // If client's send buffer is full, unregister and close (prevents hub blocking)
-					log.Printf("WebSocket client %p send channel full. Closing and unregistering.", client.conn.RemoteAddr())
-					close(client.send)
+					log.Printf("WebSocket client %p send channel full. Closing and unregistering.", client.Conn.RemoteAddr())
+					close(client.Send)
 					delete(h.clients, client)
 				}
 			}
@@ -122,4 +122,9 @@ func (h *Hub) Run() {
 			log.Printf("Broadcasted WebSocket message: Type=%s", message.Type)
 		}
 	}
+}
+
+// Method for Hub to register a client (exposed for ServeWs)
+func (h *Hub) Register(client *Client) {
+	h.register <- client
 }
