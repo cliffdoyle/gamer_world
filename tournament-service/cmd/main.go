@@ -16,10 +16,12 @@ import (
 
 	"github.com/cliffdoyle/tournament-service/internal/client"
 	"github.com/cliffdoyle/tournament-service/internal/domain"
+	"github.com/cliffdoyle/tournament-service/internal/handlers"
 	"github.com/cliffdoyle/tournament-service/internal/middleware"
 	"github.com/cliffdoyle/tournament-service/internal/repository"
 	"github.com/cliffdoyle/tournament-service/internal/service"
 	"github.com/cliffdoyle/tournament-service/internal/service/bracket"
+	"github.com/cliffdoyle/tournament-service/internal/websocket"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -55,6 +57,23 @@ func main() {
 	}
 	log.Println("Successfully connected to database")
 
+	//---Initialize WebSocket Hub---
+	wsHub:=websocket.NewHub()
+	go wsHub.Run()
+
+	// --- Pass Hub's Broadcast channel to services that need to send messages ---
+	// This is a critical part. Modify NewUserActivityService and NewTournamentService
+	// to accept this channel (or the Hub itself) if they are to broadcast events.
+	// For simplicity, we'll make it a global or pass it directly for now.
+	// A better approach is dependency injection into the services.
+
+	// ... (activityRepo, userActivityService, tournamentRepo, etc. initializations) ...
+
+	// Option A: Make wsHub.Broadcast available (e.g., pass to service constructors)
+	// You will need to modify your NewUserActivityService and NewTournamentService signatures
+	// and the structs themselves to hold this `chan domain.WebSocketMessage`
+
+
 	// Initialize router
 	router := gin.Default()
 
@@ -78,7 +97,7 @@ func main() {
 
 	//Inititialize UserActivity components
 	activityRepo:=repository.NewUserActivityRepository(db)
-	userActivityService:=service.NewUserActivityService(activityRepo,tournamentRepo)
+	userActivityService:=service.NewUserActivityService(activityRepo,tournamentRepo,wsHub.Broadcast) // Pass the WebSocket broadcast channel
 	// userActivityHandler := handlers.NewUserActivityHandler(userActivityService) // Instantiate the handler
 
 
@@ -102,11 +121,20 @@ func main() {
 		messageRepo,
 		bracketGen,
 		 userActivityService, // Removed to match the NewTournamentService signature in your provided service.go
+		 wsHub.Broadcast,
 	)
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	
+	// --- Add WebSocket Route ---
+	// It can be public or protected by AuthMiddleware if you want to identify users on connection
+	// If protected, HandleWebSocketConnections needs to access c.Get("userID")
+	router.GET("/ws", func(c *gin.Context) {
+		handlers.ServeWs(wsHub, c) // Pass the hub to the handler
 	})
 
 	// Public routes (existing ones)

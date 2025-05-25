@@ -71,6 +71,7 @@ type tournamentService struct {
 	messageRepo      repository.MessageRepository
 	bracketGenerator bracket.Generator
 	userActivityService UserActivityService
+	broadcastChan       chan<- domain.WebSocketMessage // Channel to send messages to the hub
 }
 
 // NewTournamentService creates a new tournament service
@@ -81,6 +82,7 @@ func NewTournamentService(
 	messageRepo repository.MessageRepository,
 	bracketGenerator bracket.Generator,
 	userActivityService UserActivityService,
+	broadcastChan chan<- domain.WebSocketMessage, // New parameter
 ) TournamentService {
 	return &tournamentService{
 		tournamentRepo:   tournamentRepo,
@@ -89,6 +91,7 @@ func NewTournamentService(
 		messageRepo:      messageRepo,
 		bracketGenerator: bracketGenerator,
 		userActivityService: userActivityService,
+		broadcastChan:       broadcastChan, // Store it
 	}
 }
 
