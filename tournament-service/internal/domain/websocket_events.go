@@ -1,7 +1,6 @@
 package domain
 
-import (
-	"time" // You'll likely need this for timestamps in payloads
+import (// You'll likely need this for timestamps in payloads
 	"github.com/google/uuid"
 )
 
