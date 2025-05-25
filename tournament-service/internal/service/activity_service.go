@@ -9,6 +9,7 @@ import (
 	"github.com/cliffdoyle/tournament-service/internal/domain"
 	"github.com/cliffdoyle/tournament-service/internal/repository"
 	"github.com/google/uuid"
+	"log" // For logging
 )
 
 type UserActivityService interface {
@@ -20,12 +21,14 @@ type userActivityService struct {
 	activityRepo repository.UserActivityRepository
 	// Potentially other repos if needed to enrich activity data, e.g., tournamentRepo to get tournament name
 	tournamentRepo repository.TournamentRepository // Example
+	broadcastChan  chan<- domain.WebSocketMessage // Add this
 }
 
-func NewUserActivityService(activityRepo repository.UserActivityRepository, tournamentRepo repository.TournamentRepository) UserActivityService {
+func NewUserActivityService(activityRepo repository.UserActivityRepository, tournamentRepo repository.TournamentRepository,broadcastChan chan<-domain.WebSocketMessage) UserActivityService {
 	return &userActivityService{
 		activityRepo:   activityRepo,
-		tournamentRepo: tournamentRepo,
+		tournamentRepo: tournamentRepo, // Buffered channel for broadcasting
+		broadcastChan: broadcastChan, // Injected broadcast channel
 	}
 }
 
@@ -86,6 +89,23 @@ func (s *userActivityService) RecordActivity(
 	err := s.activityRepo.Create(ctx, activity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to record activity: %w", err)
+	}
+
+	
+	if s.broadcastChan != nil {
+		wsPayload := domain.NewUserActivityPayload{
+			Activity:  *activity,
+			ForUserID: activity.UserID, // So frontend can filter if activity is for current user
+		}
+		wsMessage := domain.WebSocketMessage{
+			Type:    domain.WSEventNewUserActivity,
+			Payload: wsPayload,
+		}
+        // The hub will Marshal, send the struct directly
+		s.broadcastChan <- wsMessage
+        log.Printf("Broadcasted WSEventNewUserActivity for U-%s (Activity: %s)", activity.UserID, activity.ID)
+	} else {
+        log.Println("Warning: userActivityService.broadcastChan is nil. Cannot broadcast new activity.")
 	}
 	return activity, nil
 }

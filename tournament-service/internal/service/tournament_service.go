@@ -162,6 +162,52 @@ func (s *tournamentService) CreateTournament(
 		log.Println("Warning: userActivityService is nil in tournamentService. Cannot record activity.")
 	}
 	// --- END RECORD ACTIVITY ---
+	
+// --- Broadcast tournament created event via WebSocket ---
+	if s.broadcastChan != nil {
+		// Construct the TournamentResponse DTO for the WebSocket payload
+		participantCount, countErr := s.tournamentRepo.GetParticipantCount(ctx, tournament.ID)
+		if countErr != nil {
+			log.Printf("Warning: CreateTournament - Failed to get participant count for WebSocket payload for T-%s: %v", tournament.ID, countErr)
+		}
+
+		tournamentResponseForBroadcast := domain.TournamentResponse{
+			ID:                   tournament.ID,
+			Name:                 tournament.Name,
+			Description:          tournament.Description,
+			Game:                 tournament.Game,
+			Format:               tournament.Format,
+			Status:               tournament.Status,
+			MaxParticipants:      tournament.MaxParticipants,
+			CurrentParticipants:  participantCount,
+			RegistrationDeadline: tournament.RegistrationDeadline,
+			StartTime:            tournament.StartTime,
+			EndTime:              tournament.EndTime,
+			CreatedAt:            tournament.CreatedAt,
+			Rules:                tournament.Rules,
+			PrizePool:            tournament.PrizePool,
+			CustomFields:         tournament.CustomFields,
+			// Add CreatedBy if it's part of your TournamentResponse and needed by clients
+			// CreatedBy: tournament.CreatedBy,
+		}
+
+		wsPayload := domain.TournamentCreatedPayload{
+			Tournament: tournamentResponseForBroadcast,
+		}
+		wsMessage := domain.WebSocketMessage{
+			Type:    domain.WSEventTournamentCreated,
+			Payload: wsPayload,
+		}
+
+		// Send the domain.WebSocketMessage struct to the channel; the hub will marshal it.
+		s.broadcastChan <- wsMessage
+		log.Printf("Broadcasted WSEventTournamentCreated for T-%s", tournament.ID)
+	} else {
+		log.Println("Warning: CreateTournament - broadcastChan is nil. Cannot broadcast WebSocket event.")
+	}
+	// --- END Broadcast WebSocket event ---
+
+
 	return tournament, nil
 }
 
@@ -528,6 +574,27 @@ func (s *tournamentService) RegisterParticipant(
 		log.Println("Warning: RegisterParticipant - userActivityService is nil. Cannot record activity.")
 	}
 	// --- END RECORD ACTIVITY ---
+
+	
+	if s.broadcastChan != nil && participant.UserID != nil { // Only if actual user joined
+        // Get current participant count
+        participantCount, _ := s.tournamentRepo.GetParticipantCount(ctx, tournamentID)
+
+		// Convert domain.Participant to domain.ParticipantResponse if needed by frontend type
+        participantResp := domain.ParticipantResponse{ /* ... map from participant ... */ }
+
+		wsPayload := domain.ParticipantJoinedPayload{
+			TournamentID:     tournamentID,
+			Participant:      participantResp,
+            ParticipantCount: participantCount,
+		}
+		wsMessage := domain.WebSocketMessage{
+			Type:    domain.WSEventParticipantJoined,
+			Payload: wsPayload,
+		}
+		s.broadcastChan <- wsMessage // Send struct, hub marshals
+		log.Printf("Broadcasted WSEventParticipantJoined for P-%s in T-%s", participant.ID, tournamentID)
+	}
 
 	return participant, nil
 }
@@ -1130,6 +1197,24 @@ func (s *tournamentService) UpdateMatchScore(
 		if errStatusUpdate := s.UpdateTournamentStatus(ctx, tournament.ID, domain.Completed); errStatusUpdate != nil {
 			log.Printf("Warning (TID: %s): Failed to update tournament status to COMPLETED: %v", tournamentID, errStatusUpdate)
 		}
+	}
+	if s.broadcastChan != nil {
+		wsPayload := domain.MatchScoreUpdatedPayload{
+			TournamentID:      tournamentID,
+			MatchID:           match.ID,
+			Participant1ID:    match.Participant1ID,
+			Participant2ID:    match.Participant2ID,
+			ScoreParticipant1: match.ScoreParticipant1,
+			ScoreParticipant2: match.ScoreParticipant2,
+			WinnerID:          match.WinnerID,
+			Status:            match.Status,
+		}
+		wsMessage := domain.WebSocketMessage{
+			Type:    domain.WSEventMatchScoreUpdated,
+			Payload: wsPayload,
+		}
+		s.broadcastChan <- wsMessage // Send struct, hub marshals
+		log.Printf("Broadcasted WSEventMatchScoreUpdated for M-%s", match.ID)
 	}
 
 	return nil
