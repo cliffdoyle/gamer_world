@@ -110,7 +110,9 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
 
   // Effects for participant adding UI logic (keep your existing ones)
     useEffect(() => {
-    if (isAddingParticipant && token && allLinkableUsers.length === 0) {
+      if (isAddingParticipant && token && allLinkableUsers.length === 0) {
+        //Ensure tournament context is relevant
+        console.log(`TD_PAGE (${tournamentId}): Reacting to WebSocket message: Type=${lastJsonMessage.type}, Payload=${JSON.stringify(lastJsonMessage.payload)}`);
       setIsLoadingLinkableUsers(true);
       userApi.listUsersForLinking(token)
         .then(response => setAllLinkableUsers(response.users || []))
@@ -159,63 +161,68 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
           }
           break;
         }
-        case WS_EVENT_TYPES.MATCH_SCORE_UPDATED: {
-          const wsPayload = payload as WSMatchScoreUpdatedPayload;
-          if (wsPayload.tournament_id === tournamentId) {
-            console.log(`TD_PAGE (${tournamentId}): MATCH_SCORE_UPDATED for Match ${wsPayload.match_id}`);
-            // Optimistically update the specific match for quick UI feedback on scores
-            setMatches(prevMatches =>
-              prevMatches.map(m =>
-                m.id === wsPayload.match_id
-                  ? {
-                      ...m,
-                      score_participant1: wsPayload.score_participant1,
-                      score_participant2: wsPayload.score_participant2,
-                      winner_id: wsPayload.winner_id,
-                      status: wsPayload.status as MatchStatus,
-                    }
-                  : m
-              )
-            );
-            // Close inline editor if this was the match being edited
-            if (inlineEditingMatchId === wsPayload.match_id) {
-              setInlineEditingMatchId(null);
-              setInlineScores({ p1: '', p2: '' });
-            }
-            setSuccessMessage(`Match score updated!`);
+       // In src/app/tournaments/[id]/page.tsx
+// (inside the useEffect that handles lastJsonMessage)
 
-            // For reliable bracket progression and overall tournament status, re-fetch relevant data.
-            // Re-fetching all matches is usually the simplest way to reflect advancements.
-            console.log(`TD_PAGE (${tournamentId}): Re-fetching matches after score update for Match ${wsPayload.match_id}`);
-            tournamentApi.getMatches(token!, tournamentId)
-              .then(freshMatches => {
-                setMatches(freshMatches || []);
-                // After getting fresh matches, check if the tournament is now completed.
-                const allCompleted = freshMatches && freshMatches.length > 0 && freshMatches.every(m => m.status === 'COMPLETED');
-                if (allCompleted && tournament && tournament.status === 'IN_PROGRESS') {
-                  console.log(`TD_PAGE (${tournamentId}): All matches completed, fetching full tournament data for status update.`);
-                  fetchFullTournamentData(false); // false for no global spinner
-                }
-              })
-              .catch(err => {
-                console.error(`TD_PAGE (${tournamentId}): Error re-fetching matches after WS score update:`, err);
-                setError("Failed to refresh matches after score update.");
-              });
-          }
-          break;
+case WS_EVENT_TYPES.MATCH_SCORE_UPDATED: {
+  const wsPayload = payload as WSMatchScoreUpdatedPayload; // from types/websocket.ts
+
+  // Ensure this WS message is for the current tournament page
+  if (wsPayload.tournament_id === tournamentId) {
+    console.log(`TD_PAGE (${tournamentId}): WS - MATCH_SCORE_UPDATED received for Match ${wsPayload.match_id}. Payload:`, JSON.stringify(wsPayload));
+
+    // This functional update ensures we're always working with the freshest previous state for `matches`
+    setMatches(prevMatches => {
+      let matchFoundAndUpdated = false;
+      const updatedMatches = prevMatches.map(currentMatchInState => {
+        if (currentMatchInState.id === wsPayload.match_id) {
+          matchFoundAndUpdated = true;
+          console.log(`TD_PAGE (${tournamentId}): Updating match ${wsPayload.match_id} in local state from WS. New status: ${wsPayload.status}, P1_ID: ${wsPayload.participant1_id}, P2_ID: ${wsPayload.participant2_id}`);
+          // Construct the fully updated match.
+          // This will apply updates from M1's payload to M1, and M2's payload to M2.
+          const newMatchData: Match = { // Ensure all fields of Match are considered
+            ...currentMatchInState, // Spread to keep existing properties
+            participant1_id: wsPayload.participant1_id !== undefined ? wsPayload.participant1_id : currentMatchInState.participant1_id,
+            participant2_id: wsPayload.participant2_id !== undefined ? wsPayload.participant2_id : currentMatchInState.participant2_id,
+            score_participant1: wsPayload.score_participant1,
+            score_participant2: wsPayload.score_participant2,
+            winner_id: wsPayload.winner_id, // This is UUIDString | null
+            status: wsPayload.status as MatchStatus, // wsPayload.status is already MatchStatus
+            // If your wsPayload included an 'updated_at' from the server, assign it here:
+            // updated_at: wsPayload.server_updated_at_timestamp || currentMatchInState.updated_at,
+          };
+          return newMatchData;
         }
-        case WS_EVENT_TYPES.BRACKET_GENERATED: {
-          const wsPayload = payload as WSBracketGeneratedPayload;
-          if (wsPayload.tournament_id === tournamentId) {
-            console.log(`TD_PAGE (${tournamentId}): BRACKET_GENERATED`);
-            setMatches(wsPayload.matches); // Assumes FetchedMatch[]
-            // Tournament status typically changes to 'IN_PROGRESS'
-            setTournament(prevT => (prevT ? { ...prevT, status: 'IN_PROGRESS' as TournamentStatus } : null));
-            setSuccessMessage("Bracket generated! Tournament is now in progress.");
-            setIsGenerating(false); // Reset button state
-          }
-          break;
+        return currentMatchInState;
+      });
+
+      // If a match was updated, check for tournament completion on this new 'updatedMatches' array
+      if (matchFoundAndUpdated) {
+        // If the specific match being inline-edited was the one completed by this WS message:
+        if (inlineEditingMatchId === wsPayload.match_id && wsPayload.status === 'COMPLETED') {
+          console.log(`TD_PAGE (${tournamentId}): Inline-edited match ${wsPayload.match_id} completed via WS, closing editor.`);
+          setInlineEditingMatchId(null); // Close editor immediately
+          setInlineScores({ p1: '', p2: '' });
         }
+        setSuccessMessage(`Match ${wsPayload.match_id.substring(0,6)}... live update!`);
+
+
+        // Check if ALL matches are now 'COMPLETED' using the just-updated 'updatedMatches' array
+        const allNowCompleted = updatedMatches.length > 0 && updatedMatches.every(m => m.status === 'COMPLETED');
+
+        if (allNowCompleted && tournament && tournament.status === 'IN_PROGRESS') {
+          console.log(`TD_PAGE (${tournamentId}): All matches appear COMPLETED based on local state after WS. Fetching full tournament data to confirm & update status.`);
+          // The backend should ideally send a TOURNAMENT_STATUS_CHANGED to 'COMPLETED'.
+          // If it does, this fetchFullTournamentData might become redundant for status change,
+          // but it's a good way to ensure data consistency.
+          fetchFullTournamentData(false); // false for no global spinner
+        }
+      }
+      return updatedMatches; // Return the new array for setMatches
+    });
+  }
+  break;
+}
         case WS_EVENT_TYPES.TOURNAMENT_STATUS_CHANGED: {
             const wsPayload = payload as WSTournamentStatusChangedPayload;
             if (wsPayload.tournament_id === tournamentId) {
