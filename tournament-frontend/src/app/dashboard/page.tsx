@@ -1,7 +1,7 @@
 // src/app/dashboard/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -9,7 +9,19 @@ import { FaTrophy, FaGamepad, FaUsers, FaMedal, FaChevronRight } from 'react-ico
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { tournamentApi } from '@/lib/api/tournament';
-import { TournamentResponse as FetchedTournament, UserActivity as FetchedActivity } from '@/types/tournament';
+// import { TournamentResponse as FetchedTournament, UserActivity as FetchedActivity } from '@/types/tournament';
+import { TournamentResponse as FetchedTournament, UserActivity as FetchedActivity, TournamentStatus } from '@/types/tournament'; // Added TournamentStatus
+
+// --- Import WebSocket related types ---
+import { useWebSocket } from '@/contexts/WebSocketContext';
+import {
+  WS_EVENT_TYPES,
+  WSTournamentCreatedPayload,
+  WSParticipantJoinedPayload,
+  WSNewUserActivityPayload,
+  WSTournamentStatusChangedPayload, // Assuming you might send this for tournaments on dashboard
+  // Add other payload types if needed
+} from '@/types/websocket';
 
 // === HELPER FUNCTIONS (Restored from your original code) ===
 
@@ -132,6 +144,7 @@ const getActivityDotColor = (activityType: string | undefined): string => {
 export default function Dashboard() {
   const router = useRouter();
   const { token, user: authUser } = useAuth(); // authUser now contains enriched stats
+   const { lastJsonMessage } = useWebSocket(); // Get WebSocket context
 
   const [activeTournaments, setActiveTournaments] = useState<FetchedTournament[]>([]);
   const [isLoadingTournaments, setIsLoadingTournaments] = useState(true);
@@ -141,39 +154,120 @@ export default function Dashboard() {
   const [isLoadingActivities, setIsLoadingActivities] = useState(true);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (token) {
-      const fetchOtherDashboardData = async () => {
-        setIsLoadingTournaments(true);
-        setTournamentsError(null);
-        try {
-          const tourneyResponse = await tournamentApi.getActiveTournaments(token, 1, 3);
-          setActiveTournaments(tourneyResponse.tournaments || []);
-        } catch (err: any) {
-          setTournamentsError(err.message || "Could not load active tournaments.");
-        } finally {
-          setIsLoadingTournaments(false);
-        }
+  const MAX_DASHBOARD_TOURNAMENTS = 3;
+  const MAX_DASHBOARD_ACTIVITIES = 4;
 
-        setIsLoadingActivities(true);
-        setActivitiesError(null);
-        try {
-          const activityResponse = await tournamentApi.getRecentActivities(token, 1, 4);
-          setRecentActivities(activityResponse.activities || []);
-        } catch (err: any) {
-          setActivitiesError(err.message || "Could not load recent activities.");
-        } finally {
-          setIsLoadingActivities(false);
-        }
-      };
-      fetchOtherDashboardData();
-    } else {
+  // Initial data fetch via API (wrapped in useCallback for stable reference if needed elsewhere)
+  const fetchInitialDashboardData = useCallback(async () => {
+    if (!token) {
       setIsLoadingTournaments(false);
+      setActiveTournaments([]);
+      setIsLoadingActivities(false);
+      setRecentActivities([]);
+      return;
+    }
+
+    setIsLoadingTournaments(true);
+    setTournamentsError(null);
+    try {
+      const tourneyResponse = await tournamentApi.getActiveTournaments(token, 1, MAX_DASHBOARD_TOURNAMENTS);
+      setActiveTournaments(tourneyResponse.tournaments || []);
+    } catch (err: any) {
+      console.error("Dashboard: Error fetching active tournaments:", err);
+      setTournamentsError(err.message || "Could not load active tournaments.");
+    } finally {
+      setIsLoadingTournaments(false);
+    }
+
+    setIsLoadingActivities(true);
+    setActivitiesError(null);
+    try {
+      const activityResponse = await tournamentApi.getRecentActivities(token, 1, MAX_DASHBOARD_ACTIVITIES);
+      setRecentActivities(activityResponse.activities || []);
+    } catch (err: any) {
+      console.error("Dashboard: Error fetching recent activities:", err);
+      setActivitiesError(err.message || "Could not load recent activities.");
+    } finally {
       setIsLoadingActivities(false);
     }
-  }, [token]);
-  
-  if (!authUser) {
+  }, [token]); // Depends only on token
+
+  useEffect(() => {
+    fetchInitialDashboardData();
+  }, [fetchInitialDashboardData]); // Run once on mount or when token changes
+
+  // --- WebSocket Message Handler ---
+  useEffect(() => {
+    if (lastJsonMessage) {
+      console.log('Dashboard received WebSocket message:', lastJsonMessage);
+      // Ensure your WebSocketMessage in types/websocket.ts uses lowercase 'type' and 'payload'
+      const { type, payload } = lastJsonMessage;
+
+      switch (type) {
+        case WS_EVENT_TYPES.TOURNAMENT_CREATED: {
+          const wsPayload = payload as WSTournamentCreatedPayload;
+          console.log("Dashboard: TOURNAMENT_CREATED received", wsPayload.tournament.name);
+          setActiveTournaments(prev => {
+            if (prev.find(t => t.id === wsPayload.tournament.id)) return prev; // Avoid duplicate
+            // Add to start, keep within display limit. Consider tournament 'status' for relevancy.
+            if (['REGISTRATION', 'IN_PROGRESS'].includes(wsPayload.tournament.status)) {
+                 return [wsPayload.tournament, ...prev].slice(0, MAX_DASHBOARD_TOURNAMENTS);
+            }
+            return prev; // Don't add if not an "active" status for dashboard
+          });
+          break;
+        }
+        case WS_EVENT_TYPES.PARTICIPANT_JOINED: {
+          const wsPayload = payload as WSParticipantJoinedPayload;
+          console.log("Dashboard: PARTICIPANT_JOINED received for T_ID:", wsPayload.tournament_id);
+          setActiveTournaments(prev =>
+            prev.map(t =>
+              t.id === wsPayload.tournament_id
+                ? { ...t, currentParticipants: wsPayload.participant_count }
+                : t
+            )
+          );
+          break;
+        }
+        case WS_EVENT_TYPES.NEW_USER_ACTIVITY: {
+          const wsPayload = payload as WSNewUserActivityPayload;
+          console.log("Dashboard: NEW_USER_ACTIVITY received for User:", wsPayload.for_user_id, "Activity:", wsPayload.activity.detail);
+          setRecentActivities(prev => {
+             if (prev.find(a => a.id === wsPayload.activity.id)) return prev; // Avoid duplicate
+             // For dashboard, usually display globally relevant or *current user's* activities
+             // This example adds any new activity for now.
+             return [wsPayload.activity, ...prev].slice(0, MAX_DASHBOARD_ACTIVITIES);
+          });
+          break;
+        }
+        case WS_EVENT_TYPES.TOURNAMENT_STATUS_CHANGED: { // Optional: if relevant for dashboard
+          const wsPayload = payload as WSTournamentStatusChangedPayload;
+           console.log("Dashboard: TOURNAMENT_STATUS_CHANGED for T_ID:", wsPayload.tournament_id, "New Status:", wsPayload.new_status);
+          setActiveTournaments(prev => {
+            const tournamentIndex = prev.findIndex(t => t.id === wsPayload.tournament_id);
+            if (tournamentIndex === -1) return prev; // Tournament not on dashboard
+
+            // If new status makes it no longer "active" for dashboard, remove it. Otherwise, update.
+            if (!['REGISTRATION', 'IN_PROGRESS'].includes(wsPayload.new_status)) {
+              // Consider re-fetching to fill the gap, or just remove
+              return prev.filter(t => t.id !== wsPayload.tournament_id);
+            } else {
+              return prev.map(t =>
+                t.id === wsPayload.tournament_id
+                  ? { ...t, status: wsPayload.new_status as TournamentStatus } // Ensure type cast
+                  : t
+              );
+            }
+          });
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }, [lastJsonMessage]); // Removed authUser?.id as dependency; filtering can happen inside if needed
+
+  if (!authUser) { // This covers the initial loading phase before authUser is set
       return (
           <ProtectedRoute>
               <div className="min-h-screen bg-black flex justify-center items-center">

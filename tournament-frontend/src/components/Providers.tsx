@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { WebSocketProvider } from '@/contexts/WebSocketContext'; // <-- 1. IMPORT WebSocketProvider
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
 interface ProvidersProps {
@@ -24,7 +25,9 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
       <AuthProvider>
-        {children}
+        <WebSocketProvider> 
+          {children}
+        </WebSocketProvider>
       </AuthProvider>
     </GoogleOAuthProvider>
   );

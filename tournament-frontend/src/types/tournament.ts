@@ -1,6 +1,8 @@
 export type TournamentFormat = 'SINGLE_ELIMINATION' | 'DOUBLE_ELIMINATION' | 'ROUND_ROBIN' | 'SWISS';
 export type TournamentStatus = 'DRAFT' | 'REGISTRATION' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type BracketType = 'WINNERS' | 'LOSERS' | 'GRAND_FINALS' | null;
+// In types/tournament.ts
+export type MatchStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DISPUTED'; // Or whatever your statuses are
 
 export interface TournamentResponse {
   id: string;
@@ -58,7 +60,7 @@ export interface Match {
   score_participant2: number | null;
   winner_id: string | null;
   next_match_id: string | null;
-  status: string;
+  status: MatchStatus;
   created_at?: string;
   updated_at?: string;
   bracket_type?: BracketType;

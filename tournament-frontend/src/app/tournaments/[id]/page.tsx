@@ -8,12 +8,23 @@ import { tournamentApi } from '@/lib/api/tournament';
 import { userApi, UserForLinkingResponse } from '@/lib/api/user';
 //Add TournamentFormatType
 import { TournamentFormat } from '@/types/tournament';
-import { TournamentResponse, Participant, Match } from '@/types/tournament';
+import { TournamentResponse, Participant, Match,TournamentStatus, MatchStatus } from '@/types/tournament';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import BracketRenderer from '@/components/tournament/BracketRenderer';
 import EliminationStatsTable from '@/components/tournament/EliminationStatsTable';
 import { ArrowLeftIcon, PlusIcon, BoltIcon, TableCellsIcon, ListBulletIcon, UserCircleIcon,Squares2X2Icon } from '@heroicons/react/24/outline';
 import useDebounce from '@/hooks/useDebounce';
+
+// --- Import WebSocket related types ---
+import { useWebSocket } from '@/contexts/WebSocketContext';
+import {
+  WS_EVENT_TYPES,
+  WSParticipantJoinedPayload,
+  WSMatchScoreUpdatedPayload,
+  WSBracketGeneratedPayload,
+  WSTournamentStatusChangedPayload,
+} from '@/types/websocket';
+
 
 
 // --- START OF NEW CODE TO ADD ---
@@ -43,6 +54,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
   const { id: tournamentId } = params;
   const router = useRouter();
   const { token } = useAuth();
+   const { lastJsonMessage } = useWebSocket();
 
   const [tournament, setTournament] = useState<TournamentResponse | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -65,41 +77,39 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
   const [inlineEditingMatchId, setInlineEditingMatchId] = useState<string | null>(null);
   const [inlineScores, setInlineScores] = useState<{ p1: string, p2: string }>({ p1: '', p2: '' });
   const [viewMode, setViewMode] = useState<'bracket' | 'list'>('bracket');
-
-  const fetchTournamentData = useCallback(async () => {
+  // Fetch ALL tournament data (tournament details, participants, matches)
+  const fetchFullTournamentData = useCallback(async (showLoadingSpinner = true) => {
     if (!token || !tournamentId) return;
-    setIsLoading(true); setError(null);
+    if (showLoadingSpinner) setIsLoading(true);
+    // setError(null); // Clear error before fetching
     try {
+      console.log(`TD_PAGE (${tournamentId}): Fetching ALL tournament data.`);
       const [tournamentData, participantsData, matchesData] = await Promise.all([
         tournamentApi.getTournament(token, tournamentId),
         tournamentApi.getParticipants(token, tournamentId),
-        tournamentApi.getMatches(token, tournamentId)
+        tournamentApi.getMatches(token, tournamentId),
       ]);
       setTournament(tournamentData);
       setParticipants(participantsData || []);
       setMatches(matchesData || []);
-      console.log("Fetched Tournament Data:", tournamentData);
-      console.log("Fetched Participants:", participantsData);
-      console.log("Fetched Matches:", matchesData);
-    } catch (err: any) { 
-      console.error('Error fetching tournament data:', err);
+      console.log(`TD_PAGE (${tournamentId}): Fetched Data:`, { tournamentData, participantsData, matchesData });
+    } catch (err: any) {
+      console.error(`TD_PAGE (${tournamentId}): Error fetching full tournament data:`, err);
       setError(err.message || 'Failed to fetch tournament data');
-    } finally { setIsLoading(false); }
+    } finally {
+      if (showLoadingSpinner) setIsLoading(false);
+    }
   }, [token, tournamentId]);
 
+  // Initial data fetch
   useEffect(() => {
     if (token && tournamentId) {
-      fetchTournamentData();
+      fetchFullTournamentData(true);
     }
-  }, [token, tournamentId, fetchTournamentData]);
+  }, [token, tournamentId, fetchFullTournamentData]); // fetchFullTournamentData is stable
 
-  useEffect(() => {
-    if (tournament) {
-      setViewMode(tournament.format === 'ROUND_ROBIN' ? 'list' : 'bracket');
-    }
-  }, [tournament]);
-
-  useEffect(() => {
+  // Effects for participant adding UI logic (keep your existing ones)
+    useEffect(() => {
     if (isAddingParticipant && token && allLinkableUsers.length === 0) {
       setIsLoadingLinkableUsers(true);
       userApi.listUsersForLinking(token)
@@ -118,11 +128,112 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
     }
     const filtered = allLinkableUsers.filter(user =>
       user.username.toLowerCase().includes(debouncedSearchText.toLowerCase()) &&
-      !participants.some(p => p.user_id === user.id)
+      !participants.some(p => p.user_id === user.id) // Ensure p.user_id exists and is string for comparison
     ).slice(0, 5);
     setSuggestedUsers(filtered);
     setShowSuggestions(filtered.length > 0);
   }, [debouncedSearchText, allLinkableUsers, participants, selectedUserForParticipant]);
+
+
+  // --- WebSocket Message Handler for Tournament Detail Page ---
+  useEffect(() => {
+    // Ensure tournament data is loaded before processing WS messages for it
+    if (lastJsonMessage && tournament && tournament.id === tournamentId) {
+      console.log(`TD_PAGE (${tournamentId}): Reacting to WebSocket message:`, lastJsonMessage);
+      // Ensure your WebSocketMessage in types/websocket.ts uses lowercase 'type' and 'payload'
+      const { type, payload } = lastJsonMessage;
+
+      switch (type) {
+        case WS_EVENT_TYPES.PARTICIPANT_JOINED: {
+          const wsPayload = payload as WSParticipantJoinedPayload;
+          if (wsPayload.tournament_id === tournamentId) {
+            console.log(`TD_PAGE (${tournamentId}): PARTICIPANT_JOINED`, wsPayload.participant.participant_name);
+            setParticipants(prev => {
+              if (prev.find(p => p.id === wsPayload.participant.id)) return prev;
+              return [...prev, wsPayload.participant];
+            });
+            setTournament(prevT => (prevT ? { ...prevT, currentParticipants: wsPayload.participant_count } : null));
+            setSuccessMessage(`Participant '${wsPayload.participant.participant_name}' added!`);
+            setIsAddingParticipant(false); // Close add form
+            setParticipantSearchText(''); setParticipantDisplayName(''); setSelectedUserForParticipant(null);
+          }
+          break;
+        }
+        case WS_EVENT_TYPES.MATCH_SCORE_UPDATED: {
+          const wsPayload = payload as WSMatchScoreUpdatedPayload;
+          if (wsPayload.tournament_id === tournamentId) {
+            console.log(`TD_PAGE (${tournamentId}): MATCH_SCORE_UPDATED for Match ${wsPayload.match_id}`);
+            // Optimistically update the specific match for quick UI feedback on scores
+            setMatches(prevMatches =>
+              prevMatches.map(m =>
+                m.id === wsPayload.match_id
+                  ? {
+                      ...m,
+                      score_participant1: wsPayload.score_participant1,
+                      score_participant2: wsPayload.score_participant2,
+                      winner_id: wsPayload.winner_id,
+                      status: wsPayload.status as MatchStatus,
+                    }
+                  : m
+              )
+            );
+            // Close inline editor if this was the match being edited
+            if (inlineEditingMatchId === wsPayload.match_id) {
+              setInlineEditingMatchId(null);
+              setInlineScores({ p1: '', p2: '' });
+            }
+            setSuccessMessage(`Match score updated!`);
+
+            // For reliable bracket progression and overall tournament status, re-fetch relevant data.
+            // Re-fetching all matches is usually the simplest way to reflect advancements.
+            console.log(`TD_PAGE (${tournamentId}): Re-fetching matches after score update for Match ${wsPayload.match_id}`);
+            tournamentApi.getMatches(token!, tournamentId)
+              .then(freshMatches => {
+                setMatches(freshMatches || []);
+                // After getting fresh matches, check if the tournament is now completed.
+                const allCompleted = freshMatches && freshMatches.length > 0 && freshMatches.every(m => m.status === 'COMPLETED');
+                if (allCompleted && tournament && tournament.status === 'IN_PROGRESS') {
+                  console.log(`TD_PAGE (${tournamentId}): All matches completed, fetching full tournament data for status update.`);
+                  fetchFullTournamentData(false); // false for no global spinner
+                }
+              })
+              .catch(err => {
+                console.error(`TD_PAGE (${tournamentId}): Error re-fetching matches after WS score update:`, err);
+                setError("Failed to refresh matches after score update.");
+              });
+          }
+          break;
+        }
+        case WS_EVENT_TYPES.BRACKET_GENERATED: {
+          const wsPayload = payload as WSBracketGeneratedPayload;
+          if (wsPayload.tournament_id === tournamentId) {
+            console.log(`TD_PAGE (${tournamentId}): BRACKET_GENERATED`);
+            setMatches(wsPayload.matches); // Assumes FetchedMatch[]
+            // Tournament status typically changes to 'IN_PROGRESS'
+            setTournament(prevT => (prevT ? { ...prevT, status: 'IN_PROGRESS' as TournamentStatus } : null));
+            setSuccessMessage("Bracket generated! Tournament is now in progress.");
+            setIsGenerating(false); // Reset button state
+          }
+          break;
+        }
+        case WS_EVENT_TYPES.TOURNAMENT_STATUS_CHANGED: {
+            const wsPayload = payload as WSTournamentStatusChangedPayload;
+            if (wsPayload.tournament_id === tournamentId) {
+                console.log(`TD_PAGE (${tournamentId}): TOURNAMENT_STATUS_CHANGED to ${wsPayload.new_status}`);
+                setTournament(prevT => (prevT ? { ...prevT, status: wsPayload.new_status as TournamentStatus } : null));
+                setSuccessMessage(`Tournament status is now: ${wsPayload.new_status.replace(/_/g, ' ')}.`);
+                // If bracket was being generated and status changed due to it
+                if (isGenerating && (wsPayload.new_status === 'IN_PROGRESS' || wsPayload.new_status === 'REGISTRATION')) {
+                     setIsGenerating(false);
+                }
+            }
+            break;
+        }
+        default:
+          break;
+      }
+    }
+  }, [lastJsonMessage, tournamentId, token, tournament, fetchFullTournamentData, isGenerating, inlineEditingMatchId]); // Added isGenerating & inlineEditingMatchId
 
   const handleParticipantSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setParticipantSearchText(e.target.value);
@@ -162,7 +273,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       });
       setSuccessMessage(`Participant '${participantDisplayName.trim()}' (linked to ${selectedUserForParticipant.username}) added!`);
       setParticipantSearchText(''); setParticipantDisplayName(''); setSelectedUserForParticipant(null); setShowSuggestions(false);
-      await fetchTournamentData();
+      await fetchFullTournamentData();
     } catch (err: any) { setError(err.message || 'Failed to add participant'); }
   };
 
@@ -196,7 +307,7 @@ export default function TournamentDetailPage({ params }: { params: { id: string 
       const generatedMatches = await tournamentApi.generateBracket(token, tournament.id);
       console.log("Bracket generation API response:", generatedMatches);
       setSuccessMessage("Bracket generated successfully! Tournament may have started.");
-      await fetchTournamentData(); // Crucial to refresh all data, including tournament status and matches
+      await fetchFullTournamentData(); // Crucial to refresh all data, including tournament status and matches
     } catch (err: any) {
       console.error("Generate bracket error in API call:", err);
       setError(err.message || 'Failed to generate bracket');
